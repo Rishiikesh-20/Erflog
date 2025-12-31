@@ -25,6 +25,7 @@ from agents.agent_4_operative import agent4_router
 from agents.agent_1_perception.graph import perception_node
 from agents.agent_2_market.graph import market_scan_node
 from agents.agent_3_strategist.graph import search_jobs as strategist_search_jobs
+from agents.agent_6_interviewer.graph import run_interview_turn
 
 # Import state
 from core.state import AgentState
@@ -128,9 +129,10 @@ async def root():
     return {
         "message": "Career Flow AI API Online",
         "version": "2.0.0",
-        "agents_active": 4,
+        "agents_active": 6,
         "endpoints": {
             "workflow": ["/api/init", "/api/upload-resume", "/api/market-scan", "/api/generate-strategy", "/api/generate-application"],
+            "interview": "/api/interview/chat",
             "legacy": ["/api/match", "/api/generate-kit"],
             "agent4": "/agent4"
         }
@@ -497,6 +499,43 @@ async def generate_application(request: ApplicationRequest):
             "rewritten_content": operative_result.get("rewritten_content")
         }
     }
+
+
+# -----------------------------------------------------------------------------
+# AGENT 6: INTERVIEW CHAT ENDPOINT
+# -----------------------------------------------------------------------------
+
+@app.post("/api/interview/chat")
+async def interview_chat(request: InterviewRequest):
+    """
+    🎤 AGENT 6 ENDPOINT: The Interviewer
+    Conversational interview powered by LangGraph + Gemini.
+    
+    - Send empty `user_message` to start the interview.
+    - Send user's answer to continue the conversation.
+    - Each session_id maintains separate conversation state.
+    """
+    if not request.session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    if not request.job_context:
+        raise HTTPException(status_code=400, detail="job_context is required")
+    
+    try:
+        result = run_interview_turn(
+            session_id=request.session_id,
+            user_message=request.user_message,
+            job_context=request.job_context
+        )
+        
+        return {
+            "status": "success",
+            "response": result["response"],
+            "stage": result["stage"],
+            "message_count": result["message_count"]
+        }
+    except Exception as e:
+        print(f"❌ Interview Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Interview agent error: {str(e)}")
 
 
 # -----------------------------------------------------------------------------
