@@ -1,0 +1,73 @@
+{
+  "name": "Karthik Ganesan",
+  "email": "karthik@example.com",
+  "phone": "+1 (555) 123-4567",
+  "location": "San Francisco, CA",
+  "linkedin": "https://linkedin.com/in/karthikganesan",
+  "github": "https://github.com/karthikg",
+  "summary": "Full-stack developer with 5 years of experience building scalable web applications. Proficient in Python, JavaScript, and cloud technologies. Passionate about AI and automation.",
+  "experience": [
+    {
+      "title": "Senior Software Engineer",
+      "company": "TechStartup Inc",
+      "location": "San Francisco, CA",
+      "start_date": "Jan 2022",
+      "end_date": "Present",
+      "bullets": [
+        "Led development of microservices architecture serving 1M+ users",
+        "Implemented CI/CD pipelines reducing deployment time by 60%",
+        "Mentored team of 4 junior developers"
+      ]
+    },
+    {
+      "title": "Software Engineer",
+      "company": "WebAgency Co",
+      "location": "New York, NY",
+      "start_date": "Jun 2019",
+      "end_date": "Dec 2021",
+      "bullets": [
+        "Built RESTful APIs using Python and FastAPI",
+        "Developed React frontend components for e-commerce platform",
+        "Optimized database queries improving performance by 40%"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.S. Computer Science",
+      "institution": "UC Berkeley",
+      "location": "Berkeley, CA",
+      "graduation_date": "May 2019",
+      "gpa": "3.7"
+    }
+  ],
+  "skills": [
+    "Python",
+    "JavaScript",
+    "TypeScript",
+    "React",
+    "FastAPI",
+    "PostgreSQL",
+    "MongoDB",
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "Git",
+    "CI/CD",
+    "Agile",
+    "REST APIs",
+    "GraphQL"
+  ],
+  "certifications": [
+    {
+      "name": "AWS Solutions Architect",
+      "issuer": "Amazon",
+      "date": "2023"
+    },
+    {
+      "name": "Google Cloud Professional",
+      "issuer": "Google",
+      "date": "2022"
+    }
+  ]
+}
