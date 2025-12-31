@@ -1,25 +1,4 @@
-"""
-Agent 1: Perception Agent (Pinecone Version)
-LangGraph node for processing resumes, extracting data, and storing vectors in Pinecone.
-
-SQL Schema for Supabase (Run this if you haven't):
-================================================================================
--- Create profiles table (Structured Data Only)
-CREATE TABLE IF NOT EXISTS profiles (
-    id BIGSERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL UNIQUE,
-    name TEXT,
-    email TEXT UNIQUE,
-    skills TEXT[],
-    experience_summary TEXT,
-    education TEXT,
-    resume_json JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
--- Note: We REMOVED the profile_embeddings table because vectors now go to Pinecone.
-================================================================================
-"""
-
+# ... (Imports remain the same) ...
 import uuid
 import os
 from typing import Any
@@ -37,7 +16,9 @@ def init_pinecone():
 
 def perception_node(state: AgentState) -> dict[str, Any]:
     try:
-        # Extract PDF path
+        # ... (PDF Parsing and Gemini Extraction Logic stays the same) ...
+        # [Copy steps 1-5 from your previous code here, or just paste the whole function below]
+        
         pdf_path = state.get("context", {}).get("pdf_path")
         if not pdf_path:
             raise ValueError("PDF file path not provided")
@@ -46,11 +27,11 @@ def perception_node(state: AgentState) -> dict[str, Any]:
         print(f"[Perception] Parsing PDF: {pdf_path}")
         resume_text = parse_pdf(pdf_path)
         
-        # 2. Extract Data (Gemini)
+        # 2. Extract Data
         print("[Perception] Extracting structured data...")
         extracted_data = extract_structured_data(resume_text)
         
-        # 3. Generate Embedding (Gemini)
+        # 3. Generate Embedding
         print("[Perception] Generating embedding...")
         experience_summary = extracted_data.get("experience_summary", resume_text[:500])
         embedding = generate_embedding(experience_summary)
@@ -72,32 +53,28 @@ def perception_node(state: AgentState) -> dict[str, Any]:
             "resume_json": extracted_data,
         }
         
-        # Insert into Supabase
         profile_response = supabase.table("profiles").insert(profile_data).execute()
         if not profile_response.data:
             raise Exception("Supabase insert failed")
             
         profile_id = profile_response.data[0]["id"]
 
-        # 6. Store Vector -> Pinecone
-        print("[Perception] Storing Vector in Pinecone...")
+        # 6. Store Vector -> Pinecone (NAMESPACE ADDED HERE)
+        print("[Perception] Storing Vector in Pinecone (Namespace: users)...")
         pc = init_pinecone()
         index_name = os.getenv("PINECONE_INDEX_NAME", "career-agent")
         
-        # Check if index exists, if not create it (Serverless)
         if index_name not in pc.list_indexes().names():
             print(f"Creating Pinecone index: {index_name}")
             pc.create_index(
                 name=index_name,
-                dimension=768, # Gemini embedding dimension
+                dimension=768, 
                 metric="cosine",
-                spec=ServerlessSpec(cloud="aws", region="us-east-1") # Change region if needed
+                spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
             
         index = pc.Index(index_name)
         
-        # Upsert to Pinecone
-        # ID must be string. Metadata helps us filter later.
         vector_data = {
             "id": user_id, 
             "values": embedding,
@@ -108,7 +85,9 @@ def perception_node(state: AgentState) -> dict[str, Any]:
             }
         }
         
-        index.upsert(vectors=[vector_data])
+        # --- THE CHANGE IS HERE ---
+        index.upsert(vectors=[vector_data], namespace="users")
+        # --------------------------
         
         print(f"[Perception] Success! User: {user_id}")
         
