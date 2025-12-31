@@ -136,12 +136,15 @@ def generate_gap_roadmap(user_skills_text: str, job_description: str) -> Dict[st
 
 # --- Core Logic: The Strategist Orchestrator ---
 
-def process_career_strategy(user_query: str) -> Dict[str, Any]:
+def process_career_strategy(user_query: str, max_jobs: int = 5) -> Dict[str, Any]:
     """
     Main Orchestrator with ADJUSTED THRESHOLDS.
+    Limited to 5 jobs for faster response.
+    Only generates roadmap for top 2 Tier B jobs.
     """
-    raw_matches = search_jobs(user_query)
+    raw_matches = search_jobs(user_query, top_k=max_jobs)  # Limit search to 5
     processed_results = []
+    tier_b_count = 0  # Track Tier B jobs that got roadmaps
     
     for job in raw_matches:
         score = job['score']
@@ -155,15 +158,18 @@ def process_career_strategy(user_query: str) -> Dict[str, Any]:
             job['roadmap_details'] = None 
             
         # --- TIER B: REACH (40% - 85%) --- 
-        # ⚠️ CHANGED from 0.60 to 0.40 to catch your 0.55 jobs
         elif 0.40 <= score < 0.85:
             job['tier'] = "B"
             job['status'] = "Gap Detected"
             job['action'] = "Start Roadmap"
             job['ui_color'] = "orange"
             
-            # Generate Roadmap
-            job['roadmap_details'] = generate_gap_roadmap(user_query, job['description'])
+            # Only generate roadmap for top 2 Tier B jobs (expensive API call)
+            if tier_b_count < 2:
+                job['roadmap_details'] = generate_gap_roadmap(user_query, job['description'])
+                tier_b_count += 1
+            else:
+                job['roadmap_details'] = None  # Skip roadmap for remaining Tier B
             
         # --- TIER C: DISCARD (< 40%) ---
         else:

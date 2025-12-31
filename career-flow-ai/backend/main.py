@@ -75,7 +75,7 @@ class MarketScanRequest(BaseModel):
     session_id: str
 
 class StrategyRequest(BaseModel):
-    session_id: str
+    query: str  # Skills/experience to search for jobs
 
 class ApplicationRequest(BaseModel):
     session_id: str
@@ -119,7 +119,7 @@ class KitRequest(BaseModel):
     job_company: str
 
 class InterviewRequest(BaseModel):
-    session_id: str
+    session_id: str         # Unique session identifier for conversation state
     user_message: str = ""  # Empty for first turn (start interview)
     job_context: str        # Job title/description
 
@@ -357,60 +357,40 @@ async def market_scan(request: MarketScanRequest):
 @app.post("/api/generate-strategy")
 async def generate_strategy(request: StrategyRequest):
     """
-    Run Agent 3 (Strategist) for semantic job matching.
-    Uses the user's skills/resume to find best-fit jobs via vector search.
+    Run Agent 3 (Strategist) for semantic job matching with roadmaps.
+    Uses the provided query to find best-fit jobs via vector search.
+    Generates roadmaps for Tier B (reachable) jobs.
     
     Args:
-        request: JSON body with session_id
+        request: JSON body with query (skills/experience text)
         
     Returns:
-        Strategy analysis with matched jobs and recommendations
+        Strategy analysis with matched jobs, tiers, and roadmaps
     """
-    session_id = request.session_id
+    query_text = request.query.strip()
     
-    # Validate session
-    state = get_session(session_id)
+    if not query_text:
+        raise HTTPException(status_code=400, detail="Query is required for job matching.")
     
-    # Get user skills/summary for matching
-    skills = state.get("skills", [])
-    perception_results = state.get("results", {}).get("perception", {})
-    experience_summary = perception_results.get("experience_summary", "")
-    
-    # Build query from user profile
-    query_text = f"{' '.join(skills)} {experience_summary}"
-    
-    if not query_text.strip():
-        raise HTTPException(status_code=400, detail="No profile data available. Upload a resume first.")
-    
-    # Run Agent 3: Strategist (semantic search)
+    # Run Agent 3: Strategist (full pipeline with roadmaps)
     try:
-        print(f"[Orchestrator] Running Agent 3 (Strategist) for session: {session_id}")
-        matched_jobs = strategist_search_jobs(query_text, top_k=5)
-        
-        # Store results in session
-        if "results" not in SESSIONS[session_id]:
-            SESSIONS[session_id]["results"] = {}
-        
-        SESSIONS[session_id]["results"]["strategist"] = {
-            "matched_jobs": matched_jobs,
-            "query_used": query_text[:200],
-            "total_matches": len(matched_jobs)
-        }
+        print(f"[Orchestrator] Running Agent 3 (Strategist) with query: {query_text[:100]}...")
+        result = process_career_strategy(query_text)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Strategist Agent failed: {str(e)}")
     
     return {
         "status": "success",
-        "session_id": session_id,
         "strategy": {
-            "matched_jobs": matched_jobs,
-            "total_matches": len(matched_jobs),
-            "recommendations": [
-                f"Apply to high-match jobs (score > 0.80)",
-                f"Consider upskilling for jobs with score 0.60-0.80",
-                f"Top match: {matched_jobs[0]['title'] if matched_jobs else 'N/A'}"
-            ]
+            "matched_jobs": result.get("strategy_report", []),
+            "total_matches": result.get("matches_found", 0),
+            "query_used": query_text[:200],
+            "tier_summary": {
+                "A_ready": len([j for j in result.get("strategy_report", []) if j.get("tier") == "A"]),
+                "B_roadmap": len([j for j in result.get("strategy_report", []) if j.get("tier") == "B"]),
+                "C_low": len([j for j in result.get("strategy_report", []) if j.get("tier") == "C"])
+            }
         }
     }
 
