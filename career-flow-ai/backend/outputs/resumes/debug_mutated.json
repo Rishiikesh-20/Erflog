@@ -1,73 +1,69 @@
 {
-  "name": "Karthik Ganesan",
-  "email": "karthik@example.com",
-  "phone": "+1 (555) 123-4567",
-  "location": "San Francisco, CA",
-  "linkedin": "https://linkedin.com/in/karthikganesan",
-  "github": "https://github.com/karthikg",
-  "summary": "Full-stack developer with 5 years of experience in backend development and building scalable microservices. Proficient in Python, FastAPI, and cloud technologies including Kubernetes and Docker. Passionate about AI and automation, with a strong understanding of RESTful API design.",
+  "name": "RISHIIKESH S K",
+  "email": "rishiikeshsk@gmail.com",
+  "phone": "",
+  "location": "",
+  "linkedin": "",
+  "github": "",
+  "summary": "Full Stack Web Developer with experience building scalable backend systems and web applications. Proficient in Python and TypeScript, with a strong understanding of RESTful APIs, microservices, and database technologies including PostgreSQL and MongoDB. Hands-on experience with React.js, Node.js, Docker, and AWS. Eager to contribute to cross-functional teams and ensure code quality in a dynamic environment.",
   "experience": [
     {
-      "title": "Senior Software Engineer",
-      "company": "TechStartup Inc",
-      "location": "San Francisco, CA",
-      "start_date": "Jan 2022",
-      "end_date": "Present",
+      "title": "Research Intern",
+      "company": "Sony SSUP",
+      "location": "",
+      "start_date": "",
+      "end_date": "",
       "bullets": [
-        "Led development of a scalable microservices architecture serving 1M+ users, contributing to a distributed system.",
-        "Implemented CI/CD pipelines, reducing deployment time by 60% and improving overall development efficiency.",
-        "Mentored a team of 4 junior developers, fostering their growth in backend development practices."
-      ]
-    },
-    {
-      "title": "Software Engineer",
-      "company": "WebAgency Co",
-      "location": "New York, NY",
-      "start_date": "Jun 2019",
-      "end_date": "Dec 2021",
-      "bullets": [
-        "Built RESTful APIs using Python and FastAPI, demonstrating a strong understanding of API design.",
-        "Developed React frontend components for e-commerce platform, contributing to a seamless user experience.",
-        "Optimized database queries, improving performance by 40% and enhancing application responsiveness."
+        "Developed scalable backend systems using Next.js and Node.js (TypeScript), integrating REST APIs for efficient data retrieval and manipulation.",
+        "Implemented Redis caching strategies to optimize application performance and reduce database load.",
+        "Utilized Server-Sent Events (SSE) to enable real-time data streaming and updates to client applications.",
+        "Designed real-time Industrial IoT (IIoT) data architectures leveraging PostgreSQL, InfluxDB, and GraphDB for intelligent operational insights.",
+        "Contributed to the development of microservices architecture to enhance system scalability and maintainability."
       ]
     }
   ],
   "education": [
     {
-      "degree": "B.S. Computer Science",
-      "institution": "UC Berkeley",
-      "location": "Berkeley, CA",
-      "graduation_date": "May 2019",
-      "gpa": "3.7"
+      "degree": "Computer Science and Engineering",
+      "institution": "Amrita Vishwa Vidya Peetham",
+      "graduation_date": "2027",
+      "gpa": "8.86/10.0"
+    },
+    {
+      "degree": "Higher Secondary Education",
+      "institution": "Coimbatore",
+      "graduation_date": "2023",
+      "gpa": "96.67%"
     }
   ],
   "skills": [
     "Python",
-    "JavaScript",
     "TypeScript",
-    "React",
-    "FastAPI",
+    "React.js",
+    "Node.js",
     "PostgreSQL",
     "MongoDB",
     "Docker",
-    "Kubernetes",
     "AWS",
+    "RESTful APIs",
+    "Microservices",
+    "Go",
+    "Java",
+    "C/C++",
+    "JavaScript",
+    "Next.js",
+    "MySQL",
+    "InfluxDB",
+    "Redis",
+    "Kafka",
+    "Solana",
+    "Rust Smart Contracts",
     "Git",
-    "CI/CD",
-    "Agile",
-    "REST APIs",
-    "GraphQL"
+    "GitHub",
+    "Postman",
+    "VSCode",
+    "Linux"
   ],
-  "certifications": [
-    {
-      "name": "AWS Solutions Architect",
-      "issuer": "Amazon",
-      "date": "2023"
-    },
-    {
-      "name": "Google Cloud Professional",
-      "issuer": "Google",
-      "date": "2022"
-    }
-  ]
+  "certifications": [],
+  "projects": []
 }

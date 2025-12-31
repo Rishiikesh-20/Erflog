@@ -1,0 +1,32 @@
+# Agent 4 outputs
+backend/outputs/
+backend/outputs/resumes/*.pdf
+backend/outputs/resumes/*.json
+
+# Debug files
+debug_*.pdf
+debug_*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environment
+.env
+*.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

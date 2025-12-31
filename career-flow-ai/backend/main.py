@@ -3,23 +3,52 @@ Career Flow AI - Main Application Entry Point
 FastAPI Server for Agentic AI Backend
 """
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 
-# Load environment variables
+# Load env FIRST before any other imports
 load_dotenv()
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+# Import routers
+from agents.agent_4_operative import agent4_router
+
 app = FastAPI(
-    title="Career Flow AI Backend",
-    description="Agentic AI system for career path analysis",
+    title="Career Flow AI API",
+    description="AI-powered career automation system",
     version="1.0.0"
 )
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Include routers
+app.include_router(agent4_router)
+
 
 @app.get("/")
-async def health_check():
+async def root():
+    return {
+        "message": "Career Flow AI API",
+        "version": "1.0.0",
+        "agents": {
+            "agent4": "/agent4 - Application Operative"
+        }
+    }
+
+
+@app.get("/health")
+async def health():
     """Health check endpoint"""
     return JSONResponse(
         status_code=200,

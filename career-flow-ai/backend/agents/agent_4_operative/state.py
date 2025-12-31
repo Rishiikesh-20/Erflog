@@ -23,6 +23,7 @@ class Agent4State(TypedDict):
     user_profile: dict
     rewritten_content: RewrittenContent
     pdf_path: str
+    pdf_url: str  # Supabase storage URL
     recruiter_email: str
-    application_status: Literal["pending", "applied", "rejected"]
+    application_status: Literal["pending", "ready", "applied", "rejected"]
     feedback_loop: FeedbackLoop

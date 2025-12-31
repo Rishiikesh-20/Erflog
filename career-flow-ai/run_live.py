@@ -1,109 +1,45 @@
-import sys
+# ⚠️ LOAD DOTENV FIRST - before any other imports!
 import os
-
-# Add backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
-
 from dotenv import load_dotenv
 
-# Load environment variables from backend/.env
-load_dotenv(os.path.join(os.path.dirname(__file__), "backend", ".env"))
+# Load environment variables from backend/.env FIRST
+env_path = os.path.join(os.path.dirname(__file__), "backend", ".env")
+load_dotenv(env_path)
+
+# Debug: Verify env vars are loaded
+print(f"DEBUG: SUPABASE_URL = {os.getenv('SUPABASE_URL')}")
+print(f"DEBUG: SUPABASE_KEY = {os.getenv('SUPABASE_KEY')[:15]}..." if os.getenv('SUPABASE_KEY') else "DEBUG: SUPABASE_KEY = None")
+print()
+
+# NOW import backend modules (after dotenv is loaded)
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
 from agents.agent_4_operative.graph import run_agent4
-from agents.agent_4_operative.tools import fetch_user_profile_from_db
+from agents.agent_4_operative.tools import fetch_user_profile_by_uuid, build_resume_from_profile
 
 # ==================== CONFIG ====================
-USE_DATABASE = True # Set to True to fetch from Pinecone/Supabase
-USER_ID = "your-user-id-here"  # Replace with actual user_id from Agent 1
+# User UUID from Supabase profiles table
+USER_UUID = "22c91dc9-4238-499b-a107-5b1abf3b919c"
 
-# ==================== MOCK DATA ====================
+JOB_DESCRIPTION = """
+Full Stack Developer (Python + TypeScript) at Michael Page
 
-MOCK_USER_PROFILE = {
-    "name": "Karthik Ganesan",
-    "email": "karthik@example.com",
-    "phone": "+1 (555) 123-4567",
-    "location": "San Francisco, CA",
-    "linkedin": "https://linkedin.com/in/karthikganesan",
-    "github": "https://github.com/karthikg",
-    "summary": "Full-stack developer with 5 years of experience building scalable web applications. Proficient in Python, JavaScript, and cloud technologies. Passionate about AI and automation.",
-    "experience": [
-        {
-            "title": "Senior Software Engineer",
-            "company": "TechStartup Inc",
-            "location": "San Francisco, CA",
-            "start_date": "Jan 2022",
-            "end_date": "Present",
-            "bullets": [
-                "Led development of microservices architecture serving 1M+ users",
-                "Implemented CI/CD pipelines reducing deployment time by 60%",
-                "Mentored team of 4 junior developers"
-            ]
-        },
-        {
-            "title": "Software Engineer",
-            "company": "WebAgency Co",
-            "location": "New York, NY",
-            "start_date": "Jun 2019",
-            "end_date": "Dec 2021",
-            "bullets": [
-                "Built RESTful APIs using Python and FastAPI",
-                "Developed React frontend components for e-commerce platform",
-                "Optimized database queries improving performance by 40%"
-            ]
-        }
-    ],
-    "education": [
-        {
-            "degree": "B.S. Computer Science",
-            "institution": "UC Berkeley",
-            "location": "Berkeley, CA",
-            "graduation_date": "May 2019",
-            "gpa": "3.7"
-        }
-    ],
-    "skills": [
-        "Python", "JavaScript", "TypeScript", "React", "FastAPI",
-        "PostgreSQL", "MongoDB", "Docker", "Kubernetes", "AWS",
-        "Git", "CI/CD", "Agile", "REST APIs", "GraphQL"
-    ],
-    "certifications": [
-        {"name": "AWS Solutions Architect", "issuer": "Amazon", "date": "2023"},
-        {"name": "Google Cloud Professional", "issuer": "Google", "date": "2022"}
-    ]
-}
+Location: Bengaluru, Karnataka, India
 
-MOCK_JOB_DESCRIPTION = """
-Senior Backend Engineer at TechCorp
-
-About the Role:
-We are looking for a Senior Backend Engineer to join our Platform team. You will be 
-responsible for designing and building scalable microservices that power our AI-driven 
-product recommendations engine.
+Description:
+Develop and maintain web applications using Python and TypeScript. 
+Collaborate with cross-functional teams, ensure code quality, debug technical issues, 
+and contribute to scalable system architectures.
 
 Requirements:
-- 5+ years of experience in backend development
-- Strong proficiency in Python and FastAPI/Django
-- Experience with distributed systems and microservices architecture
-- Hands-on experience with Kubernetes and Docker
-- Familiarity with machine learning pipelines is a plus
-- Experience with PostgreSQL and Redis
-- Strong understanding of RESTful API design
-- Excellent problem-solving and communication skills
-
-Nice to have:
-- Experience with LangChain or similar AI frameworks
-- Knowledge of vector databases (Pinecone, Weaviate)
-- Contributions to open source projects
-
-Benefits:
-- Competitive salary ($180k - $220k)
-- Remote-first culture
-- Health, dental, and vision insurance
-- 401k matching
-- Unlimited PTO
+- Strong proficiency in Python and TypeScript
+- Experience with React.js and Node.js
+- Knowledge of PostgreSQL and MongoDB
+- Experience with Docker and AWS
+- Understanding of RESTful APIs and microservices
 """
 
-# ==================== RUN THE AGENT ====================
 
 def main():
     print("=" * 60)
@@ -111,32 +47,33 @@ def main():
     print("=" * 60)
     print()
     
-    print("📄 User Profile:")
-    print(f"   Name: {MOCK_USER_PROFILE['name']}")
-    print(f"   Email: {MOCK_USER_PROFILE['email']}")
-    print()
-    
-    print("💼 Target Job:")
-    print(f"   {MOCK_JOB_DESCRIPTION[:100]}...")
-    print()
-    
-    print("-" * 60)
-    print("⚙️  Starting Agent 4 Workflow...")
-    print("-" * 60)
-    print()
-    
     try:
-        # Choose data source
-        if USE_DATABASE:
-            print("📡 Fetching profile from Pinecone/Supabase...")
-            user_profile = fetch_user_profile_from_db(USER_ID)
-        else:
-            print("🧪 Using local mock data...")
-            user_profile = MOCK_USER_PROFILE
+        # Fetch profile data from Supabase by UUID
+        print(f"📡 Fetching profile for user: {USER_UUID}...")
+        profile = fetch_user_profile_by_uuid(USER_UUID)
         
-        # Run the agent
+        # Build resume dict from profile
+        user_profile = build_resume_from_profile(profile)
+        
+        print()
+        print("📄 User Profile Loaded:")
+        print(f"   Name: {user_profile.get('name', 'N/A')}")
+        print(f"   Email: {user_profile.get('email', 'N/A')}")
+        print(f"   Skills: {user_profile.get('skills', [])[:5]}...")
+        print(f"   Experience Summary: {user_profile.get('experience_summary', 'N/A')[:50]}...")
+        print()
+        
+        print("💼 Target Job:")
+        print(f"   {JOB_DESCRIPTION[:150]}...")
+        print()
+        
+        print("-" * 60)
+        print("⚙️  Starting Agent 4 Workflow...")
+        print("-" * 60)
+        print()
+        
         result = run_agent4(
-            job_description=MOCK_JOB_DESCRIPTION,
+            job_description=JOB_DESCRIPTION,
             user_profile=user_profile
         )
         
