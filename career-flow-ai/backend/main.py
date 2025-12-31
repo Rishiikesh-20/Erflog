@@ -24,7 +24,7 @@ from agents.agent_4_operative import agent4_router
 # Import Agent Nodes
 from agents.agent_1_perception.graph import perception_node
 from agents.agent_2_market.graph import market_scan_node
-from agents.agent_3_strategist.graph import search_jobs as strategist_search_jobs
+from agents.agent_3_strategist.graph import search_jobs as strategist_search_jobs, process_career_strategy
 from agents.agent_6_interviewer.graph import run_interview_turn
 
 # Import state
@@ -169,32 +169,19 @@ async def analyze_career(request: AnalyzeRequest):
 async def match_agent(request: SearchRequest):
     """
     Match agent endpoint - uses Agent 3 Strategist for semantic job matching.
+    Uses process_career_strategy which handles Tiers and generates Roadmaps.
     """
     if not request.query:
         raise HTTPException(status_code=400, detail="Query text is required")
     
     try:
-        # Use Agent 3's search_jobs function for semantic matching
-        results = strategist_search_jobs(request.query, top_k=5)
-        
-        final_response = []
-        for job in results:
-            score = job.get('score', 0)
-            if score > 0.80:
-                job['status'] = "Ready"
-                job['action'] = "Apply Now"
-                job['roadmap_details'] = None
-            else:
-                job['status'] = "Learning Path Required"
-                job['action'] = "Start Roadmap"
-                job['roadmap_details'] = None  # Can add roadmap generation later
-            
-            final_response.append(job)
+        # Use Agent 3's full orchestrator (search + tier classification + roadmap generation)
+        result = process_career_strategy(request.query)
         
         return {
             "status": "success",
-            "count": len(final_response),
-            "matches": final_response
+            "count": result.get("matches_found", 0),
+            "matches": result.get("strategy_report", [])
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Match agent error: {str(e)}")

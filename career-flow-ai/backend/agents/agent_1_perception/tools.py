@@ -2,23 +2,26 @@
 Agent 1 Perception - Helper Tools for PDF Processing and Data Extraction
 This module provides tools for:
 1. Parsing PDF files
-2. Extracting structured data using Gemini 1.5 Flash
+2. Extracting structured data using Gemini
 3. Generating embeddings for similarity search
 """
 
 import json
 import os
 from typing import Any
-import google.generativeai as genai
+from dotenv import load_dotenv
+from google import genai
 from pypdf import PdfReader
 
+# Load environment variables
+load_dotenv()
 
-def init_gemini():
-    """Initialize Gemini API with the API key from environment."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY must be set in .env")
-    genai.configure(api_key=api_key)
+# Initialize Gemini client
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY must be set in the environment or a .env file")
+
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def parse_pdf(file_path: str) -> str:
@@ -81,8 +84,10 @@ def extract_structured_data(text: str) -> dict[str, Any]:
     """
     
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
         
         # Extract JSON from response
         response_text = response.text.strip()
@@ -129,17 +134,15 @@ def generate_embedding(text: str) -> list[float]:
     Raises:
         Exception: If embedding generation fails
     """
-    init_gemini()
-    
     try:
-        # Use the official embedding model
-        result = genai.embed_content(
-            model="models/embedding-001",
-            content=text
+        # Use the official embedding model (768 dimensions)
+        response = client.models.embed_content(
+            model="text-embedding-004",
+            contents=text,
         )
         
-        # The embedding is in the 'embedding' key of the response
-        embedding = result['embedding']
+        # The embedding is in embeddings[0].values
+        embedding = response.embeddings[0].values
         
         if not isinstance(embedding, list):
             raise ValueError("Embedding is not a list")
