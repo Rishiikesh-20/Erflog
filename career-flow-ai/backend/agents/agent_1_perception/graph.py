@@ -105,6 +105,19 @@ def perception_node(state: AgentState) -> dict[str, Any]:
         # Add summary to state so next agents can see it easily
         updated_state["summary"] = experience_summary 
         
+        # Store perception results for API response
+        updated_state["results"] = {
+            **state.get("results", {}),
+            "perception": {
+                "name": extracted_data.get("name"),
+                "email": extracted_data.get("email"),
+                "education": extracted_data.get("education"),
+                "experience_summary": experience_summary,
+                "profile_id": profile_id,
+                "resume_json": extracted_data
+            }
+        }
+        
         return updated_state
     
     except Exception as e:

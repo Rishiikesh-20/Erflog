@@ -209,6 +209,7 @@ def market_scan_node(state: AgentState) -> dict[str, Any]:
                 "vectors_saved": vectors_saved,
                 "search_query": search_query,
                 "job_ids": [job["id"] for job in saved_jobs],
+                "job_matches": job_matches  # Add job_matches to results for API
             }
         }
         
