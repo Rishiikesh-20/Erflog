@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+*.env
+.env.local
+.env.*.local
+
+# Agent 4 outputs
+career-flow-ai/backend/outputs/
+*.pdf
+debug_*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+.DS_Store?
+._*
+
+# Logs
+*.log
+logs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Node (if frontend exists)
+node_modules/
+.next/
+out/
