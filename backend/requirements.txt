@@ -13,4 +13,7 @@ langchain-google-genai==2.0.8
 weasyprint==63.1
 jinja2==3.1.5
 pinecone==5.4.2
-python-multipart 
+python-multipart
+python-jose[cryptography]==3.3.0
+httpx==0.27.0
+jose[cryptography]==3.3.0 
