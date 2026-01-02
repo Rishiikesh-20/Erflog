@@ -5,413 +5,207 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from "react";
+import * as api from "./api";
 import {
-  initSession,
-  uploadResume,
-  generateStrategy,
-  generateApplication,
-  healthCheck,
-  getErrorMessage,
-} from "@/lib/api";
-import type { UserProfile, StrategyJobMatch, Application } from "@/lib/api";
+  UserProfile,
+  StrategyJobMatch,
+  MatchResponse,
+  Strategy,
+} from "./api";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-interface SessionState {
+// 1. Define the Shape of the Context
+interface SessionContextType {
   sessionId: string | null;
-  isInitialized: boolean;
+  profile: UserProfile | null;
   isLoading: boolean;
   error: string | null;
-
-  // User profile from resume
-  profile: UserProfile | null;
-
-  // Strategy data
   strategyJobs: StrategyJobMatch[];
-
-  // Application data
-  application: Application | null;
-
-  // API status
   isApiHealthy: boolean;
-}
 
-interface SessionContextType extends SessionState {
   // Actions
   initialize: () => Promise<string | null>;
-  uploadUserResume: (
-    file: File,
-    overrideSessionId?: string
-  ) => Promise<boolean>;
+  checkHealth: () => Promise<boolean>;
+  
+  // UPDATED SIGNATURE HERE: Added githubUrl as optional
+  uploadUserResume: (file: File, sessionId: string, githubUrl?: string) => Promise<boolean>;
+  
   runStrategy: (query?: string, forceRefresh?: boolean) => Promise<boolean>;
-  runApplication: (
-    jobDescription?: string,
-    forceRefresh?: boolean
-  ) => Promise<boolean>;
   clearError: () => void;
   resetSession: () => void;
-  checkHealth: () => Promise<boolean>;
 }
-
-// ============================================================================
-// Context
-// ============================================================================
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
-// ============================================================================
-// Storage Keys
-// ============================================================================
+export const useSession = () => {
+  const context = useContext(SessionContext);
+  if (!context) {
+    throw new Error("useSession must be used within a SessionProvider");
+  }
+  return context;
+};
 
-const STORAGE_KEYS = {
-  SESSION_ID: "erflog_session_id",
-  PROFILE: "erflog_profile",
-  STRATEGY_JOBS: "erflog_strategy_jobs",
-  STRATEGY_TIMESTAMP: "erflog_strategy_timestamp",
-  APPLICATION: "erflog_application",
-  APPLICATION_TIMESTAMP: "erflog_application_timestamp",
-} as const;
+interface SessionProviderProps {
+  children: ReactNode;
+}
 
-// Cache duration in milliseconds (5 minutes)
-const CACHE_DURATION = 5 * 60 * 1000;
+export const SessionProvider: React.FC<SessionProviderProps> = ({
+  children,
+}) => {
+  // State
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [strategyJobs, setStrategyJobs] = useState<StrategyJobMatch[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isApiHealthy, setIsApiHealthy] = useState<boolean>(true);
 
-// ============================================================================
-// Provider
-// ============================================================================
-
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<SessionState>({
-    sessionId: null,
-    isInitialized: false,
-    isLoading: false,
-    error: null,
-    profile: null,
-    strategyJobs: [],
-    application: null,
-    isApiHealthy: true,
-  });
-
-  // Load persisted session data on mount
+  // Load session from localStorage on mount
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const sessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID);
-      const profile = localStorage.getItem(STORAGE_KEYS.PROFILE);
-      const strategyJobs = localStorage.getItem(STORAGE_KEYS.STRATEGY_JOBS);
-      const application = localStorage.getItem(STORAGE_KEYS.APPLICATION);
-
-      setState((prev) => ({
-        ...prev,
-        sessionId,
-        isInitialized: !!sessionId,
-        profile: profile ? JSON.parse(profile) : null,
-        strategyJobs: strategyJobs ? JSON.parse(strategyJobs) : [],
-        application: application ? JSON.parse(application) : null,
-      }));
+    const storedSession = localStorage.getItem("erflog_session_id");
+    const storedProfile = localStorage.getItem("erflog_profile");
+    
+    if (storedSession) {
+      setSessionId(storedSession);
+    }
+    
+    if (storedProfile) {
+      try {
+        setProfile(JSON.parse(storedProfile));
+      } catch (e) {
+        console.error("Failed to parse stored profile", e);
+        localStorage.removeItem("erflog_profile");
+      }
     }
   }, []);
 
-  // Persist data helpers
-  const persistData = (key: string, data: unknown) => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(key, JSON.stringify(data));
-    }
-  };
+  const clearError = useCallback(() => setError(null), []);
 
-  const persistString = (key: string, data: string) => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(key, data);
-    }
-  };
-
-  // Check if cached data is still valid (within CACHE_DURATION)
-  const isCacheValid = (timestampKey: string): boolean => {
-    if (typeof window === "undefined") return false;
-    const timestamp = localStorage.getItem(timestampKey);
-    if (!timestamp) return false;
-    const cacheTime = parseInt(timestamp, 10);
-    return Date.now() - cacheTime < CACHE_DURATION;
-  };
-
-  // Save timestamp for cache
-  const persistTimestamp = (key: string) => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(key, Date.now().toString());
-    }
-  };
-
-  // ============================================================================
-  // Actions
-  // ============================================================================
-
-  const checkHealth = async (): Promise<boolean> => {
+  const checkHealth = useCallback(async () => {
     try {
-      const response = await healthCheck();
-      const isHealthy = response.status === "healthy";
-      setState((prev) => ({ ...prev, isApiHealthy: isHealthy }));
-      return isHealthy;
-    } catch {
-      setState((prev) => ({ ...prev, isApiHealthy: false }));
+      await api.healthCheck();
+      setIsApiHealthy(true);
+      return true;
+    } catch (err) {
+      console.error("Health check failed", err);
+      setIsApiHealthy(false);
       return false;
     }
-  };
+  }, []);
 
-  const initialize = async (): Promise<string | null> => {
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
+  const initialize = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
     try {
-      const response = await initSession();
-      const sessionId = response.session_id;
-
-      persistString(STORAGE_KEYS.SESSION_ID, sessionId);
-
-      setState((prev) => ({
-        ...prev,
-        sessionId,
-        isInitialized: true,
-        isLoading: false,
-      }));
-
-      return sessionId;
-    } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: errorMessage,
-      }));
+      const response = await api.initSession();
+      if (response.status === "success") {
+        setSessionId(response.session_id);
+        localStorage.setItem("erflog_session_id", response.session_id);
+        return response.session_id;
+      }
+      throw new Error("Failed to initialize session");
+    } catch (err) {
+      const msg = api.getErrorMessage(err);
+      setError(msg);
       return null;
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const uploadUserResume = async (
-    file: File,
-    overrideSessionId?: string
-  ): Promise<boolean> => {
-    const sessionIdToUse = overrideSessionId || state.sessionId;
-
-    if (!sessionIdToUse) {
-      setState((prev) => ({
-        ...prev,
-        error: "No active session. Please initialize first.",
-      }));
-      return false;
-    }
-
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await uploadResume(file, sessionIdToUse);
-
-      persistData(STORAGE_KEYS.PROFILE, response.profile);
-
-      setState((prev) => ({
-        ...prev,
-        profile: response.profile,
-        isLoading: false,
-      }));
-
-      return true;
-    } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: errorMessage,
-      }));
-      return false;
-    }
-  };
-
-  const runStrategy = async (
-    query?: string,
-    forceRefresh = false
-  ): Promise<boolean> => {
-    // Check if we have valid cached data (unless force refresh)
-    if (!forceRefresh && isCacheValid(STORAGE_KEYS.STRATEGY_TIMESTAMP)) {
-      const cachedJobs =
-        state.strategyJobs.length > 0
-          ? state.strategyJobs
-          : typeof window !== "undefined"
-          ? JSON.parse(localStorage.getItem(STORAGE_KEYS.STRATEGY_JOBS) || "[]")
-          : [];
-
-      if (cachedJobs.length > 0) {
-        // Use cached data
-        if (state.strategyJobs.length === 0) {
-          setState((prev) => ({ ...prev, strategyJobs: cachedJobs }));
+  // --- THE FIX IS HERE ---
+  const uploadUserResume = useCallback(
+    async (file: File, activeSessionId: string, githubUrl?: string) => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Pass the githubUrl to the API call
+        const response = await api.uploadResume(file, activeSessionId, githubUrl);
+        
+        if (response.status === "success" && response.profile) {
+          setProfile(response.profile);
+          localStorage.setItem("erflog_profile", JSON.stringify(response.profile));
+          return true;
         }
+        return false;
+      } catch (err) {
+        const msg = api.getErrorMessage(err);
+        setError(msg);
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  const runStrategy = useCallback(
+    async (query?: string, forceRefresh: boolean = false) => {
+      if (!sessionId || !profile) {
+        setError("Session or profile missing");
+        return false;
+      }
+
+      // If we already have jobs and aren't forcing refresh, return true (cache)
+      if (strategyJobs.length > 0 && !forceRefresh) {
         return true;
       }
-    }
 
-    // Build query from provided query or profile skills
-    let queryText = query;
+      setIsLoading(true);
+      setError(null);
 
-    if (!queryText) {
-      // Get profile from state or localStorage
-      const profileData =
-        state.profile ||
-        (typeof window !== "undefined"
-          ? JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFILE) || "null")
-          : null);
-
-      if (profileData && profileData.skills && profileData.skills.length > 0) {
-        // Use skills and experience summary as query
-        queryText = profileData.skills.join(" ");
-        if (profileData.experience_summary) {
-          queryText += " " + profileData.experience_summary;
+      try {
+        // Use user skills as default query if none provided
+        const searchQuery = query || profile.skills.join(", ");
+        
+        // Use matchJobs (Agent 3) which includes roadmaps
+        const response = await api.matchJobs(searchQuery);
+        
+        if (response.status === "success" && response.matches) {
+          // Convert MatchJobResult to StrategyJobMatch type if needed
+          // or ensure types align in api.ts. Here we assume they are compatible.
+          setStrategyJobs(response.matches as unknown as StrategyJobMatch[]);
+          return true;
         }
+        return false;
+      } catch (err) {
+        const msg = api.getErrorMessage(err);
+        setError(msg);
+        return false;
+      } finally {
+        setIsLoading(false);
       }
-    }
+    },
+    [sessionId, profile, strategyJobs.length]
+  );
 
-    if (!queryText) {
-      setState((prev) => ({
-        ...prev,
-        error: "No skills found. Please upload your resume first.",
-      }));
-      return false;
-    }
+  const resetSession = useCallback(() => {
+    setSessionId(null);
+    setProfile(null);
+    setStrategyJobs([]);
+    localStorage.removeItem("erflog_session_id");
+    localStorage.removeItem("erflog_profile");
+    setError(null);
+  }, []);
 
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await generateStrategy(queryText);
-
-      persistData(STORAGE_KEYS.STRATEGY_JOBS, response.strategy.matched_jobs);
-      persistTimestamp(STORAGE_KEYS.STRATEGY_TIMESTAMP);
-
-      setState((prev) => ({
-        ...prev,
-        strategyJobs: response.strategy.matched_jobs,
-        isLoading: false,
-      }));
-
-      return true;
-    } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: errorMessage,
-      }));
-      return false;
-    }
-  };
-
-  const runApplication = async (
-    jobDescription?: string,
-    forceRefresh = false
-  ): Promise<boolean> => {
-    // Check if we have valid cached data (unless force refresh)
-    if (!forceRefresh && isCacheValid(STORAGE_KEYS.APPLICATION_TIMESTAMP)) {
-      const cachedApp =
-        state.application ||
-        (typeof window !== "undefined"
-          ? JSON.parse(localStorage.getItem(STORAGE_KEYS.APPLICATION) || "null")
-          : null);
-
-      if (cachedApp) {
-        // Use cached data
-        if (!state.application) {
-          setState((prev) => ({ ...prev, application: cachedApp }));
-        }
-        return true;
-      }
-    }
-
-    // Get sessionId from state or localStorage as fallback
-    const sessionIdToUse =
-      state.sessionId ||
-      (typeof window !== "undefined"
-        ? localStorage.getItem(STORAGE_KEYS.SESSION_ID)
-        : null);
-
-    if (!sessionIdToUse) {
-      setState((prev) => ({ ...prev, error: "No active session." }));
-      return false;
-    }
-
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await generateApplication(
-        sessionIdToUse,
-        jobDescription
-      );
-
-      persistData(STORAGE_KEYS.APPLICATION, response.application);
-      persistTimestamp(STORAGE_KEYS.APPLICATION_TIMESTAMP);
-
-      setState((prev) => ({
-        ...prev,
-        application: response.application,
-        isLoading: false,
-      }));
-
-      return true;
-    } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: errorMessage,
-      }));
-      return false;
-    }
-  };
-
-  const clearError = () => {
-    setState((prev) => ({ ...prev, error: null }));
-  };
-
-  const resetSession = () => {
-    // Clear all persisted data
-    if (typeof window !== "undefined") {
-      Object.values(STORAGE_KEYS).forEach((key) => {
-        localStorage.removeItem(key);
-      });
-    }
-
-    setState({
-      sessionId: null,
-      isInitialized: false,
-      isLoading: false,
-      error: null,
-      profile: null,
-      strategyJobs: [],
-      application: null,
-      isApiHealthy: true,
-    });
-  };
-
-  const value: SessionContextType = {
-    ...state,
+  const value = {
+    sessionId,
+    profile,
+    isLoading,
+    error,
+    strategyJobs,
+    isApiHealthy,
     initialize,
+    checkHealth,
     uploadUserResume,
     runStrategy,
-    runApplication,
     clearError,
     resetSession,
-    checkHealth,
   };
 
   return (
     <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );
-}
-
-// ============================================================================
-// Hook
-// ============================================================================
-
-export function useSession() {
-  const context = useContext(SessionContext);
-  if (context === undefined) {
-    throw new Error("useSession must be used within a SessionProvider");
-  }
-  return context;
-}
+};

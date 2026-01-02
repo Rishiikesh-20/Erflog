@@ -6,6 +6,7 @@ FastAPI Server for Agentic AI Backend with Multi-Agent Workflow
 import os
 import uuid
 import tempfile
+import shutil
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
@@ -20,18 +21,19 @@ from pydantic import BaseModel
 
 # Import auth dependency
 from auth.dependencies import get_current_user
+# --- IMPORTS FOR AGENTS & DB ---
+from core.state import AgentState
+from core.db import db_manager  # Database connection
 
 # Import routers
 from agents.agent_4_operative import agent4_router
 
-# Import Agent Nodes
-from agents.agent_1_perception.graph import perception_node
+# Import Agent Nodes/Functions
+from agents.agent_1_perception.graph import perception_node, app as perception_agent
+from agents.agent_1_perception.github_watchdog import fetch_and_analyze_github  # <--- NEW IMPORT
 from agents.agent_2_market.graph import market_scan_node
 from agents.agent_3_strategist.graph import search_jobs as strategist_search_jobs, process_career_strategy
 from agents.agent_6_chat_interview.graph import run_interview_turn
-
-# Import state
-from core.state import AgentState
 
 app = FastAPI(
     title="Career Flow AI API",
@@ -84,6 +86,16 @@ class ApplicationRequest(BaseModel):
     session_id: str
     job_description: Optional[str] = None
 
+class InterviewRequest(BaseModel):
+    session_id: str         # Unique session identifier for conversation state
+    user_message: str = ""  # Empty for first turn (start interview)
+    job_context: str        # Job title/description
+
+# --- NEW MODEL FOR GITHUB SYNC ---
+class GithubSyncRequest(BaseModel):
+    session_id: str
+    github_url: str
+
 # -----------------------------------------------------------------------------
 # Helper Functions
 # -----------------------------------------------------------------------------
@@ -105,27 +117,8 @@ def initialize_state() -> AgentState:
     )
 
 # -----------------------------------------------------------------------------
-# EXISTING ENDPOINTS (PRESERVED)
+# ENDPOINTS
 # -----------------------------------------------------------------------------
-
-# --- Pydantic Models ---
-class AnalyzeRequest(BaseModel):
-    user_input: str
-    context: Optional[dict] = {}
-
-class SearchRequest(BaseModel):
-    query: str
-
-class KitRequest(BaseModel):
-    user_name: str
-    job_title: str
-    job_company: str
-
-class InterviewRequest(BaseModel):
-    session_id: str         # Unique session identifier for conversation state
-    user_message: str = ""  # Empty for first turn (start interview)
-    job_context: str        # Job title/description
-
 
 @app.get("/")
 async def root():
@@ -139,6 +132,7 @@ async def root():
             "legacy": ["/api/match", "/api/generate-kit"],
             "agent4": "/agent4",
             "auth": "/api/me"
+            "watchdog": "/api/sync-github" # <--- Added to documentation
         }
     }
 
@@ -184,17 +178,12 @@ async def analyze_career(request: AnalyzeRequest):
 
 @app.post("/api/match")
 async def match_agent(request: SearchRequest):
-    """
-    Match agent endpoint - uses Agent 3 Strategist for semantic job matching.
-    Uses process_career_strategy which handles Tiers and generates Roadmaps.
-    """
+    """Match agent endpoint - uses Agent 3 Strategist."""
     if not request.query:
         raise HTTPException(status_code=400, detail="Query text is required")
     
     try:
-        # Use Agent 3's full orchestrator (search + tier classification + roadmap generation)
         result = process_career_strategy(request.query)
-        
         return {
             "status": "success",
             "count": result.get("matches_found", 0),
@@ -206,34 +195,20 @@ async def match_agent(request: SearchRequest):
 
 @app.post("/api/generate-kit")
 async def generate_kit_endpoint(request: KitRequest):
-    """
-    Generate deployment kit endpoint.
-    Uses Agent 4 for resume/application generation.
-    """
+    """Generate deployment kit endpoint."""
     try:
-        # Use Agent 4's service for kit generation
         from agents.agent_4_operative import agent4_service
-        
         result = agent4_service.generate_resume(
             user_profile={"name": request.user_name},
             job_description=f"Position: {request.job_title} at {request.job_company}"
         )
-        
         if result.get("pdf_path"):
             return FileResponse(
                 path=result["pdf_path"],
                 filename=os.path.basename(result["pdf_path"]),
                 media_type='application/pdf'
             )
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "success",
-                "message": "Kit generated",
-                "data": result
-            }
-        )
+        return JSONResponse(status_code=200, content={"status": "success", "message": "Kit generated", "data": result})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Kit generation error: {str(e)}")
 
@@ -244,51 +219,23 @@ async def generate_kit_endpoint(request: KitRequest):
 
 @app.post("/api/init")
 async def init_session():
-    """
-    Initialize a new session for the agent workflow.
-    
-    Returns:
-        session_id: Unique identifier for the user session
-    """
     session_id = str(uuid.uuid4())
     SESSIONS[session_id] = initialize_state()
-    
     print(f"[Orchestrator] New session initialized: {session_id}")
-    
-    return {
-        "status": "success",
-        "session_id": session_id,
-        "message": "Session initialized. Upload a resume to begin."
-    }
+    return {"status": "success", "session_id": session_id, "message": "Session initialized."}
 
 
 @app.post("/api/upload-resume")
-async def upload_resume(
-    file: UploadFile = File(...),
-    session_id: str = Form(...)
-):
-    """
-    Upload a resume PDF and run Agent 1 (Perception).
-    
-    Args:
-        file: Resume PDF file
-        session_id: Session identifier
-        
-    Returns:
-        Extracted profile data (name, skills, summary)
-    """
-    # Validate session
+async def upload_resume(file: UploadFile = File(...), session_id: str = Form(...)):
+    """Upload a resume PDF and run Agent 1 (Perception)."""
     state = get_session(session_id)
     
-    # Validate file type
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
     
-    # Save PDF to temporary location
     try:
         temp_dir = Path(tempfile.gettempdir()) / "career_flow_uploads"
         temp_dir.mkdir(exist_ok=True)
-        
         pdf_filename = f"{session_id}_{file.filename}"
         pdf_path = temp_dir / pdf_filename
         
@@ -297,27 +244,19 @@ async def upload_resume(
             f.write(content)
         
         print(f"[Orchestrator] Resume saved: {pdf_path}")
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
     
-    # Update state with PDF path
     state["context"]["pdf_path"] = str(pdf_path)
     
-    # Run Agent 1: Perception
     try:
         print(f"[Orchestrator] Running Agent 1 (Perception) for session: {session_id}")
         updated_state = perception_node(state)
-        
-        # Merge updated state back into session
         SESSIONS[session_id].update(updated_state)
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Perception Agent failed: {str(e)}")
     
-    # Extract response data
     perception_results = SESSIONS[session_id].get("results", {}).get("perception", {})
-    
     return {
         "status": "success",
         "session_id": session_id,
@@ -331,69 +270,189 @@ async def upload_resume(
         }
     }
 
+@app.post("/api/sync-github")
+async def sync_github(request: GithubSyncRequest):
+    """
+    1. Analyzes the GitHub Repo using Agent 1's Watchdog.
+    2. Updates the User Profile in Supabase/Session.
+    3. CRITICAL: Puts NEW skills at the FRONT of the list so Agent 3 prioritizes them.
+    """
+    print(f"🚀 Syncing GitHub for session: {request.session_id}")
+    
+    # 1. Run the Watchdog
+    analysis = fetch_and_analyze_github(request.github_url)
+    
+    if not analysis:
+        print("⚠️ GitHub analysis failed or returned empty.")
+        return {"status": "failed", "message": "Could not analyze repo", "analysis": {}}
+
+    new_skills = [item['skill'] for item in analysis.get('detected_skills', [])]
+    print(f"✅ Watchdog found new skills: {new_skills}")
+
+    # 2. Smart Merge: New Skills First!
+    # We want the search query to look like: "Pandas, Scikit-Learn, Python, ... Spring, Java"
+    # This forces the AI to see the Data Science context first.
+    
+    current_skills = []
+    if request.session_id in SESSIONS:
+        current_skills = SESSIONS[request.session_id].get("skills", [])
+    
+    # Filter out duplicates from OLD list, keep NEW list order intact
+    old_unique_skills = [s for s in current_skills if s not in new_skills]
+    
+    # COMBINE: NEW + OLD
+    final_skills = new_skills + old_unique_skills
+    
+    # Update Session
+    if request.session_id in SESSIONS:
+        SESSIONS[request.session_id]["skills"] = final_skills
+        print(f"🔄 Session skills updated: {len(current_skills)} -> {len(final_skills)} (New skills prioritized)")
+
+    # 3. Update Database (Persistent Storage)
+    client = db_manager.get_client()
+    try:
+        print("🔍 DB: finding most recent profile to update...")
+        response = client.table("profiles").select("*").order("created_at", desc=True).limit(1).execute()
+
+        if response.data:
+            profile = response.data[0]
+            profile_id = profile['id']
+            
+            # DB Merge (Repeat logic to be safe)
+            db_existing_skills = profile.get('skills', []) or []
+            db_old_unique = [s for s in db_existing_skills if s not in new_skills]
+            db_final_skills = new_skills + db_old_unique
+            
+            # Update the DB
+            client.table("profiles").update({
+                "skills": db_final_skills
+            }).eq("id", profile_id).execute()
+            
+            print(f"💾 Updated Profile {profile_id} in DB with {len(db_final_skills)} total skills.")
+            
+            return {
+                "status": "success", 
+                "analysis": analysis,
+                "updated_skills": db_final_skills # Returning ordered list
+            }
+        else:
+             print("⚠️ No profile found in DB.")
+
+    except Exception as e:
+        print(f"❌ DB Update Error (Non-fatal): {e}")
+        # Return success with the session-based skills
+        return {"status": "partial_success", "analysis": analysis, "updated_skills": final_skills}
+
+    return {"status": "success", "analysis": analysis, "updated_skills": final_skills}
+
+# Add this model near the top with others
+class WatchdogCheckRequest(BaseModel):
+    session_id: str
+    last_known_sha: Optional[str] = None # To avoid re-analyzing the same commit
+
+
+# In backend/main.py
+
+@app.post("/api/watchdog/check")
+async def watchdog_check(request: WatchdogCheckRequest):
+    """
+    Polls GitHub. Uses SERVER MEMORY to strictly prevent re-scanning the same commit.
+    """
+    from agents.agent_1_perception.github_watchdog import get_latest_user_activity, fetch_and_analyze_github
+    
+    # 1. Check GitHub for latest activity
+    activity = get_latest_user_activity("dummy") 
+    
+    if not activity:
+        return {"status": "error", "message": "Could not fetch GitHub activity"}
+        
+    current_sha = activity['latest_commit_sha']
+    repo_name = activity['repo_name']
+    
+    # --- BULLETPROOF FIX: Check Server Memory ---
+    # We check if we already processed this SHA for this session in RAM.
+    last_processed_sha = None
+    if request.session_id in SESSIONS:
+        last_processed_sha = SESSIONS[request.session_id].get("last_watchdog_sha")
+
+    # If Frontend knows it OR Backend remembers it -> STOP.
+    if request.last_known_sha == current_sha or last_processed_sha == current_sha:
+        return {"status": "no_change", "repo_name": repo_name}
+        
+    # 3. If we are here, it is genuinely NEW.
+    print(f"🔔 LIVE WATCHDOG: New activity detected in {repo_name} (SHA: {current_sha[:7]})")
+    
+    # MEMORIZE IT NOW (Before analysis, to prevent race conditions)
+    if request.session_id in SESSIONS:
+        SESSIONS[request.session_id]["last_watchdog_sha"] = current_sha
+    
+    # 4. Run Analysis
+    analysis = fetch_and_analyze_github(activity['repo_url'])
+    
+    if not analysis:
+        # Return updated status so frontend syncs up
+        return {
+            "status": "updated", 
+            "repo_name": repo_name, 
+            "new_sha": current_sha,
+            "updated_skills": [],
+            "analysis": {}
+        }
+
+    new_skills = [item['skill'] for item in analysis.get('detected_skills', [])]
+    
+    # 5. Update Database
+    client = db_manager.get_client()
+    final_skills = new_skills
+    
+    try:
+        if request.session_id in SESSIONS:
+            existing = SESSIONS[request.session_id].get("skills", [])
+            unique_old = [s for s in existing if s not in new_skills]
+            final_skills = new_skills + unique_old 
+            SESSIONS[request.session_id]["skills"] = final_skills
+            
+        response = client.table("profiles").select("*").order("created_at", desc=True).limit(1).execute()
+        if response.data:
+            profile_id = response.data[0]['id']
+            client.table("profiles").update({"skills": final_skills}).eq("id", profile_id).execute()
+            
+    except Exception as e:
+        print(f"❌ DB Error: {e}")
+
+    return {
+        "status": "updated",
+        "repo_name": repo_name,
+        "new_sha": current_sha,
+        "updated_skills": final_skills,
+        "analysis": analysis
+    }
 
 @app.post("/api/market-scan")
 async def market_scan(request: MarketScanRequest):
-    """
-    Run Agent 2 (Market Sentinel) to find job matches.
-    
-    Args:
-        request: JSON body with session_id
-        
-    Returns:
-        List of job matches with full descriptions
-    """
+    """Run Agent 2 (Market Sentinel) to find job matches."""
     session_id = request.session_id
-    
-    # Validate session
     state = get_session(session_id)
-    
-    # Run Agent 2: Market Sentinel
     try:
         print(f"[Orchestrator] Running Agent 2 (Market) for session: {session_id}")
         updated_state = market_scan_node(state)
-        
-        # Merge updated state back into session
         SESSIONS[session_id].update(updated_state)
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Market Agent failed: {str(e)}")
-    
-    # Extract job matches from results
     market_results = SESSIONS[session_id].get("results", {}).get("market", {})
     job_matches = market_results.get("job_matches", [])
-    
-    return {
-        "status": "success",
-        "session_id": session_id,
-        "job_matches": job_matches,
-        "total_matches": len(job_matches)
-    }
+    return {"status": "success", "session_id": session_id, "job_matches": job_matches, "total_matches": len(job_matches)}
 
 
 @app.post("/api/generate-strategy")
 async def generate_strategy(request: StrategyRequest):
-    """
-    Run Agent 3 (Strategist) for semantic job matching with roadmaps.
-    Uses the provided query to find best-fit jobs via vector search.
-    Generates roadmaps for Tier B (reachable) jobs.
-    
-    Args:
-        request: JSON body with query (skills/experience text)
-        
-    Returns:
-        Strategy analysis with matched jobs, tiers, and roadmaps
-    """
+    """Run Agent 3 (Strategist) for semantic job matching with roadmaps."""
     query_text = request.query.strip()
-    
     if not query_text:
         raise HTTPException(status_code=400, detail="Query is required for job matching.")
-    
-    # Run Agent 3: Strategist (full pipeline with roadmaps)
     try:
         print(f"[Orchestrator] Running Agent 3 (Strategist) with query: {query_text[:100]}...")
         result = process_career_strategy(query_text)
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Strategist Agent failed: {str(e)}")
     
@@ -414,39 +473,21 @@ async def generate_strategy(request: StrategyRequest):
 
 @app.post("/api/generate-application")
 async def generate_application(request: ApplicationRequest):
-    """
-    Run Agent 4 (Operative) to generate tailored resume and recruiter outreach.
-    
-    Args:
-        request: JSON body with session_id and optionally job_description
-        
-    Returns:
-        Tailored resume (PDF path) and recruiter email
-    """
+    """Run Agent 4 (Operative) to generate tailored resume and outreach."""
     session_id = request.session_id
-    
-    # Validate session
     state = get_session(session_id)
-    
-    # Get job description from request or from strategist results
     job_description = request.job_description
     if not job_description:
         strategist_results = state.get("results", {}).get("strategist", {})
         matched_jobs = strategist_results.get("matched_jobs", [])
-        if matched_jobs:
-            job_description = matched_jobs[0].get("description", "")
-    
+        if matched_jobs: job_description = matched_jobs[0].get("description", "")
     if not job_description:
-        # Try market results as fallback
         market_results = state.get("results", {}).get("market", {})
         job_matches = market_results.get("job_matches", [])
-        if job_matches:
-            job_description = job_matches[0].get("description", job_matches[0].get("summary", ""))
-    
+        if job_matches: job_description = job_matches[0].get("description", job_matches[0].get("summary", ""))
     if not job_description:
-        raise HTTPException(status_code=400, detail="job_description is required (none found in session)")
+        raise HTTPException(status_code=400, detail="job_description is required")
     
-    # Build user profile from perception results
     perception_results = state.get("results", {}).get("perception", {})
     user_profile = {
         "name": perception_results.get("name"),
@@ -457,18 +498,12 @@ async def generate_application(request: ApplicationRequest):
         "resume": perception_results.get("resume_json", {})
     }
     
-    # Run Agent 4: Operative
     try:
         print(f"[Orchestrator] Running Agent 4 (Operative) for session: {session_id}")
         from agents.agent_4_operative.graph import run_agent4
-        
         operative_result = run_agent4(job_description, user_profile)
-        
-        # Store operative results in session
-        if "results" not in SESSIONS[session_id]:
-            SESSIONS[session_id]["results"] = {}
+        if "results" not in SESSIONS[session_id]: SESSIONS[session_id]["results"] = {}
         SESSIONS[session_id]["results"]["operative"] = operative_result
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Operative Agent failed: {str(e)}")
     
@@ -477,7 +512,7 @@ async def generate_application(request: ApplicationRequest):
         "session_id": session_id,
         "application": {
             "pdf_path": operative_result.get("pdf_path"),
-            "pdf_url": operative_result.get("pdf_url"),  # Supabase storage URL
+            "pdf_url": operative_result.get("pdf_url"),
             "recruiter_email": operative_result.get("recruiter_email"),
             "application_status": operative_result.get("application_status"),
             "rewritten_content": operative_result.get("rewritten_content")
@@ -485,42 +520,17 @@ async def generate_application(request: ApplicationRequest):
     }
 
 
-# -----------------------------------------------------------------------------
-# AGENT 6: INTERVIEW CHAT ENDPOINT
-# -----------------------------------------------------------------------------
-
 @app.post("/api/interview/chat")
 async def interview_chat(request: InterviewRequest):
-    """
-    🎤 AGENT 6 ENDPOINT: The Interviewer
-    Conversational interview powered by LangGraph + Gemini.
-    
-    - Send empty `user_message` to start the interview.
-    - Send user's answer to continue the conversation.
-    - Each session_id maintains separate conversation state.
-    """
-    if not request.session_id:
-        raise HTTPException(status_code=400, detail="session_id is required")
-    if not request.job_context:
-        raise HTTPException(status_code=400, detail="job_context is required")
-    
+    """Agent 6: Interview Chat Endpoint"""
+    if not request.session_id: raise HTTPException(status_code=400, detail="session_id is required")
+    if not request.job_context: raise HTTPException(status_code=400, detail="job_context is required")
     try:
-        result = run_interview_turn(
-            session_id=request.session_id,
-            user_message=request.user_message,
-            job_context=request.job_context
-        )
-        
-        return {
-            "status": "success",
-            "response": result["response"],
-            "stage": result["stage"],
-            "message_count": result["message_count"]
-        }
+        result = run_interview_turn(session_id=request.session_id, user_message=request.user_message, job_context=request.job_context)
+        return {"status": "success", "response": result["response"], "stage": result["stage"], "message_count": result["message_count"]}
     except Exception as e:
         print(f"❌ Interview Error: {e}")
         raise HTTPException(status_code=500, detail=f"Interview agent error: {str(e)}")
-
 
 # -----------------------------------------------------------------------------
 # Entry Point
