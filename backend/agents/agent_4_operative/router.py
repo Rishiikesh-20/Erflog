@@ -15,13 +15,13 @@ from .schemas import (
 from .service import agent4_service
 
 
-router = APIRouter(
+agent4_router = APIRouter(
     prefix="/agent4",
     tags=["Agent 4 - Application Operative"]
 )
 
 
-@router.get("/health", response_model=HealthResponse)
+@agent4_router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint for Agent 4."""
     return HealthResponse(
@@ -32,7 +32,7 @@ async def health_check():
     )
 
 
-@router.post(
+@agent4_router.post(
     "/generate-resume",
     response_model=GenerateResumeResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
@@ -60,7 +60,7 @@ async def generate_resume(request: GenerateResumeRequest):
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
-@router.post(
+@agent4_router.post(
     "/generate-resume-by-profile",
     response_model=GenerateResumeResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
@@ -83,7 +83,7 @@ async def generate_resume_by_profile_id(request: GenerateResumeByProfileIdReques
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
-@router.post(
+@agent4_router.post(
     "/analyze-rejection",
     response_model=AnalyzeRejectionResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
@@ -110,7 +110,7 @@ async def analyze_rejection(request: AnalyzeRejectionRequest):
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
-@router.post(
+@agent4_router.post(
     "/generate-responses",
     response_model=GenerateApplicationResponsesResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}

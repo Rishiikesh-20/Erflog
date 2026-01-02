@@ -1,17 +1,16 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSession } from "@/lib/SessionContext";
-import { generateApplication, generateKit, getErrorMessage } from "@/lib/api";
-import { Loader2, Download, Copy, Check, AlertCircle } from "lucide-react";
+import { generateKit, getErrorMessage } from "@/lib/api";
+import { Loader2, Download, Copy, Check, AlertCircle, ExternalLink } from "lucide-react";
 
 export default function ApplyPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id as string;
-  const { profile, strategyJobs, sessionId, application, runApplication } =
-    useSession();
+  const { profile, strategyJobs, sessionId } = useSession();
 
   // Find job from strategy jobs
   const job = strategyJobs.find((j) => j.id === jobId) || {
@@ -22,11 +21,8 @@ export default function ApplyPage() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [generatedContent, setGeneratedContent] = useState<{
-    pdfUrl?: string;
-    recruiterEmail?: string;
-    rewrittenContent?: Record<string, unknown>;
-  } | null>(null);
+  const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
+  const [generationSuccess, setGenerationSuccess] = useState(false);
 
   const [formData, setFormData] = useState({
     whyJoin: "",
@@ -36,54 +32,28 @@ export default function ApplyPage() {
 
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Load from session application if available
-  useEffect(() => {
-    if (application) {
-      setGeneratedContent({
-        pdfUrl: application.pdf_url,
-        recruiterEmail: application.recruiter_email,
-        rewrittenContent: application.rewritten_content,
-      });
-    }
-  }, [application]);
-
-  const handleGenerateApplication = async () => {
-    if (!sessionId) {
-      setError("No active session. Please upload your resume first.");
-      return;
-    }
-
-    setIsGenerating(true);
-    setError(null);
-
-    try {
-      const success = await runApplication(job.description);
-      if (success) {
-        // Content will be loaded from useEffect when application updates
-      } else {
-        setError("Failed to generate application materials.");
-      }
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   const handleGenerateKit = async () => {
     if (!profile) {
-      setError("No profile found. Please upload your resume first.");
+      setError("No profile found. Please upload your resume first on the home page.");
       return;
     }
 
     setIsGenerating(true);
     setError(null);
+    setGeneratedPdfUrl(null);
+    setGenerationSuccess(false);
 
     try {
-      const result = await generateKit(profile.name, job.title, job.company);
+      const result = await generateKit(
+        profile.name, 
+        job.title, 
+        job.company, 
+        sessionId || undefined,
+        job.description || undefined
+      );
 
       if (result instanceof Blob) {
-        // Download the PDF
+        // Direct PDF blob - download immediately
         const url = window.URL.createObjectURL(result);
         const a = document.createElement("a");
         a.href = url;
@@ -94,11 +64,42 @@ export default function ApplyPage() {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
+        setGenerationSuccess(true);
+      } else {
+        // JSON response - check for pdf_url
+        const jsonResult = result as { 
+          status?: string; 
+          message?: string; 
+          detail?: string;
+          data?: { 
+            pdf_url?: string; 
+            pdf_path?: string;
+          };
+        };
+        
+        if (jsonResult.status === "success" && jsonResult.data?.pdf_url) {
+          setGeneratedPdfUrl(jsonResult.data.pdf_url);
+          setGenerationSuccess(true);
+        } else {
+          setError(jsonResult.message || jsonResult.detail || "Failed to generate resume.");
+        }
       }
     } catch (err) {
-      setError(getErrorMessage(err));
+      const errorMsg = getErrorMessage(err);
+      if (errorMsg.includes("501") || errorMsg.includes("Not Implemented")) {
+        setError("Please upload your resume on the home page first to enable resume generation.");
+      } else {
+        setError(errorMsg);
+      }
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (generatedPdfUrl) {
+      // Open in new tab or trigger download
+      window.open(generatedPdfUrl, '_blank');
     }
   };
 
@@ -112,19 +113,9 @@ export default function ApplyPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const handleDownloadResume = () => {
-    if (generatedContent?.pdfUrl) {
-      window.open(generatedContent.pdfUrl, "_blank");
-    } else {
-      handleGenerateKit();
-    }
-  };
-
-  // Sample AI-generated responses (fallback if not generated)
+  // Sample AI-generated responses
   const generatedResponses = {
-    whyJoin:
-      generatedContent?.recruiterEmail ||
-      `I am excited about the opportunity to join ${job.company} because of its innovative approach to technology and commitment to excellence. The ${job.title} role aligns perfectly with my career aspirations and technical expertise. I am particularly drawn to the company's culture of continuous learning and the opportunity to work on impactful projects that make a real difference.`,
+    whyJoin: `I am excited about the opportunity to join ${job.company} because of its innovative approach to technology and commitment to excellence. The ${job.title} role aligns perfectly with my career aspirations and technical expertise. I am particularly drawn to the company's culture of continuous learning and the opportunity to work on impactful projects that make a real difference.`,
     shortDescription: `I am a passionate software engineer with hands-on experience in building scalable applications and solving complex technical challenges. My background includes working with cross-functional teams to deliver high-quality solutions on time. I thrive in collaborative environments and am constantly seeking to expand my technical knowledge and contribute meaningfully to team success.`,
     additionalInfo: `Throughout my career, I have demonstrated strong problem-solving abilities and a commitment to writing clean, maintainable code. I am experienced in agile methodologies and have a track record of quickly adapting to new technologies and frameworks. I am confident that my skills and enthusiasm would make me a valuable addition to the ${job.company} team.`,
   };
@@ -169,18 +160,23 @@ export default function ApplyPage() {
           <div className="flex items-start gap-6">
             <div
               className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: "#D95D39" }}
+              style={{ backgroundColor: generationSuccess ? "#22c55e" : "#D95D39" }}
             >
-              <Download className="w-8 h-8 text-white" />
+              {generationSuccess ? (
+                <Check className="w-8 h-8 text-white" />
+              ) : (
+                <Download className="w-8 h-8 text-white" />
+              )}
             </div>
             <div className="flex-1">
               <h2 className="font-serif-bold text-2xl text-ink mb-2">
-                Your Optimized Resume
+                {generationSuccess ? "Resume Generated!" : "Your Optimized Resume"}
               </h2>
               <p className="text-secondary mb-6">
-                {generatedContent?.pdfUrl
-                  ? "Your tailored resume is ready for download."
-                  : `Generate a tailored resume highlighting the skills and experiences most relevant to this position at ${job.company}.`}
+                {generationSuccess 
+                  ? `Your tailored resume for ${job.company} is ready for download.`
+                  : `Generate a tailored resume highlighting the skills and experiences most relevant to this position at ${job.company}.`
+                }
               </p>
 
               {error && (
@@ -190,11 +186,11 @@ export default function ApplyPage() {
                 </div>
               )}
 
-              <div className="flex gap-3">
-                {!generatedContent && (
+              <div className="flex flex-wrap gap-3">
+                {!generationSuccess ? (
                   <button
-                    onClick={handleGenerateApplication}
-                    disabled={isGenerating || !sessionId}
+                    onClick={handleGenerateKit}
+                    disabled={isGenerating || !profile}
                     className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
                     style={{ backgroundColor: "#D95D39" }}
                   >
@@ -203,30 +199,51 @@ export default function ApplyPage() {
                     ) : (
                       <Download className="w-5 h-5" />
                     )}
-                    Generate Application Kit
+                    {isGenerating ? "Generating..." : "Generate Tailored Resume"}
                   </button>
+                ) : (
+                  <>
+                    {generatedPdfUrl && (
+                      <button
+                        onClick={handleDownloadPdf}
+                        className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                        style={{ backgroundColor: "#22c55e" }}
+                      >
+                        <Download className="w-5 h-5" />
+                        Download Resume PDF
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setGenerationSuccess(false);
+                        setGeneratedPdfUrl(null);
+                      }}
+                      className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50"
+                      style={{ borderColor: "#E5E0D8" }}
+                    >
+                      <Download className="w-5 h-5" />
+                      Generate New Version
+                    </button>
+                  </>
                 )}
-
-                <button
-                  onClick={handleDownloadResume}
-                  disabled={isGenerating}
-                  className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
-                  style={{
-                    backgroundColor: generatedContent?.pdfUrl
-                      ? "#D95D39"
-                      : "#6b7280",
-                  }}
-                >
-                  {isGenerating ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Download className="w-5 h-5" />
-                  )}
-                  {generatedContent?.pdfUrl
-                    ? "Download Resume"
-                    : "Download Sample Resume"}
-                </button>
               </div>
+
+              {generatedPdfUrl && (
+                <div className="mt-4 p-3 rounded-lg bg-green-50 border border-green-200">
+                  <p className="text-sm text-green-700 flex items-center gap-2">
+                    <Check className="w-4 h-4" />
+                    Resume saved to cloud storage
+                    <a 
+                      href={generatedPdfUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="ml-2 underline flex items-center gap-1"
+                    >
+                      Open in new tab <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -241,8 +258,7 @@ export default function ApplyPage() {
           </h2>
           <p className="text-secondary mb-8">
             Use these AI-generated responses for common application questions.
-            Click the copy button to copy to clipboard, or edit as needed in the
-            text area.
+            Click the copy button to copy to clipboard, or edit as needed.
           </p>
 
           {/* Why do you want to join */}
@@ -253,10 +269,7 @@ export default function ApplyPage() {
               </label>
               <button
                 onClick={() =>
-                  handleCopy(
-                    "whyJoin",
-                    formData.whyJoin || generatedResponses.whyJoin
-                  )
+                  handleCopy("whyJoin", formData.whyJoin || generatedResponses.whyJoin)
                 }
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
               >
@@ -278,13 +291,7 @@ export default function ApplyPage() {
               onChange={(e) => handleInputChange("whyJoin", e.target.value)}
               rows={5}
               className="w-full px-4 py-3 rounded-lg border bg-white text-ink resize-none focus:outline-none focus:ring-2"
-              style={
-                {
-                  borderColor: "#E5E0D8",
-                  "--tw-ring-color": "#D95D39",
-                } as React.CSSProperties
-              }
-              placeholder="Edit or use the generated response..."
+              style={{ borderColor: "#E5E0D8" } as React.CSSProperties}
             />
           </div>
 
@@ -296,11 +303,7 @@ export default function ApplyPage() {
               </label>
               <button
                 onClick={() =>
-                  handleCopy(
-                    "shortDescription",
-                    formData.shortDescription ||
-                      generatedResponses.shortDescription
-                  )
+                  handleCopy("shortDescription", formData.shortDescription || generatedResponses.shortDescription)
                 }
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
               >
@@ -318,21 +321,11 @@ export default function ApplyPage() {
               </button>
             </div>
             <textarea
-              value={
-                formData.shortDescription || generatedResponses.shortDescription
-              }
-              onChange={(e) =>
-                handleInputChange("shortDescription", e.target.value)
-              }
+              value={formData.shortDescription || generatedResponses.shortDescription}
+              onChange={(e) => handleInputChange("shortDescription", e.target.value)}
               rows={5}
               className="w-full px-4 py-3 rounded-lg border bg-white text-ink resize-none focus:outline-none focus:ring-2"
-              style={
-                {
-                  borderColor: "#E5E0D8",
-                  "--tw-ring-color": "#D95D39",
-                } as React.CSSProperties
-              }
-              placeholder="Edit or use the generated response..."
+              style={{ borderColor: "#E5E0D8" } as React.CSSProperties}
             />
           </div>
 
@@ -344,10 +337,7 @@ export default function ApplyPage() {
               </label>
               <button
                 onClick={() =>
-                  handleCopy(
-                    "additionalInfo",
-                    formData.additionalInfo || generatedResponses.additionalInfo
-                  )
+                  handleCopy("additionalInfo", formData.additionalInfo || generatedResponses.additionalInfo)
                 }
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
               >
@@ -365,59 +355,25 @@ export default function ApplyPage() {
               </button>
             </div>
             <textarea
-              value={
-                formData.additionalInfo || generatedResponses.additionalInfo
-              }
-              onChange={(e) =>
-                handleInputChange("additionalInfo", e.target.value)
-              }
+              value={formData.additionalInfo || generatedResponses.additionalInfo}
+              onChange={(e) => handleInputChange("additionalInfo", e.target.value)}
               rows={5}
               className="w-full px-4 py-3 rounded-lg border bg-white text-ink resize-none focus:outline-none focus:ring-2"
-              style={
-                {
-                  borderColor: "#E5E0D8",
-                  "--tw-ring-color": "#D95D39",
-                } as React.CSSProperties
-              }
-              placeholder="Edit or use the generated response..."
+              style={{ borderColor: "#E5E0D8" } as React.CSSProperties}
             />
           </div>
 
           {/* Tips Section */}
-          <div
-            className="p-5 rounded-lg bg-orange-50 border"
-            style={{ borderColor: "#D95D39" }}
-          >
+          <div className="p-5 rounded-lg bg-orange-50 border" style={{ borderColor: "#D95D39" }}>
             <div className="flex items-start gap-3">
-              <svg
-                className="w-6 h-6 flex-shrink-0 mt-0.5"
-                style={{ color: "#D95D39" }}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" style={{ color: "#D95D39" }} />
               <div>
                 <h4 className="font-medium text-ink mb-1">Pro Tips</h4>
                 <ul className="text-sm text-secondary space-y-1">
-                  <li>
-                    • Personalize the generated responses with specific examples
-                    from your experience
-                  </li>
-                  <li>
-                    • Mention specific projects or technologies that align with
-                    the job requirements
-                  </li>
+                  <li>• Personalize responses with specific examples from your experience</li>
+                  <li>• Mention specific projects or technologies that align with the job</li>
                   <li>• Keep your responses concise but impactful</li>
-                  <li>
-                    • Research {job.company} to add company-specific details
-                  </li>
+                  <li>• Research {job.company} to add company-specific details</li>
                 </ul>
               </div>
             </div>
