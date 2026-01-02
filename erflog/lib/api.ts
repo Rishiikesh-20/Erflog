@@ -165,7 +165,14 @@ export interface InterviewResponse {
 export interface GenerateKitResponse {
   status: string;
   message: string;
-  data: Record<string, unknown>;
+  data?: {
+    pdf_url?: string;
+    pdf_path?: string;
+    user_name?: string;
+    job_title?: string;
+    job_company?: string;
+    application_status?: string;
+  };
 }
 
 export interface ApiError {
@@ -288,7 +295,9 @@ export async function interviewChat(
 export async function generateKit(
   userName: string,
   jobTitle: string,
-  jobCompany: string
+  jobCompany: string,
+  sessionId?: string,
+  jobDescription?: string
 ): Promise<GenerateKitResponse | Blob> {
   const response = await api.post(
     "/api/generate-kit",
@@ -296,19 +305,13 @@ export async function generateKit(
       user_name: userName,
       job_title: jobTitle,
       job_company: jobCompany,
-    },
-    {
-      responseType: "blob",
+      session_id: sessionId,
+      job_description: jobDescription,
     }
   );
 
-  const contentType = response.headers["content-type"];
-  if (contentType?.includes("application/pdf")) {
-    return response.data as Blob;
-  }
-
-  const text = await (response.data as Blob).text();
-  return JSON.parse(text) as GenerateKitResponse;
+  // Check if response is JSON (which it should be now)
+  return response.data as GenerateKitResponse;
 }
 
 export async function analyze(
