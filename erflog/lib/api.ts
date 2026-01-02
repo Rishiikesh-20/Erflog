@@ -55,13 +55,21 @@ export interface UploadResumeResponse {
   profile: UserProfile;
 }
 
-// --- MODIFIED INTERFACE ---
 export interface SyncGithubResponse {
   status: string;
   analysis: {
     detected_skills: Array<{ skill: string; level: string; evidence: string }>;
   };
-  updated_skills: string[]; // <--- ADDED THIS: Receives the combined skills list from backend
+  updated_skills: string[];
+}
+
+// --- NEW INTERFACE FOR WATCHDOG CHECK ---
+export interface WatchdogCheckResponse {
+  status: "updated" | "no_change" | "error";
+  repo_name?: string;
+  new_sha?: string;
+  updated_skills?: string[];
+  analysis?: any;
 }
 
 export interface RoadmapResource {
@@ -219,6 +227,18 @@ export async function syncGithub(
   return response.data;
 }
 
+// --- NEW FUNCTION: CHECK WATCHDOG STATUS ---
+export async function checkWatchdog(
+  sessionId: string,
+  lastKnownSha?: string
+): Promise<WatchdogCheckResponse> {
+  const response = await api.post<WatchdogCheckResponse>("/api/watchdog/check", {
+    session_id: sessionId,
+    last_known_sha: lastKnownSha
+  });
+  return response.data;
+}
+
 export async function generateStrategy(
   query: string
 ): Promise<GenerateStrategyResponse> {
@@ -301,10 +321,6 @@ export async function analyze(
   });
   return response.data;
 }
-
-// ============================================================================
-// Error Handling Helper
-// ============================================================================
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {

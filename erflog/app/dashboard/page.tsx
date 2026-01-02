@@ -15,11 +15,12 @@ import {
   Sparkles,
   Building2,
   RefreshCw,
+  Radio, // <--- New Icon for Live Mode
   Github,
 } from "lucide-react";
 import { useSession } from "@/lib/SessionContext";
 import type { StrategyJobMatch } from "@/lib/api";
-import { syncGithub } from "@/lib/api";
+import { checkWatchdog } from "@/lib/api"; 
 
 // --- STATIC DATA ---
 const SIMULATION_STEPS = [
@@ -39,7 +40,6 @@ const SIMULATION_STEPS = [
   { agent: "Agent 5 (Kit Builder)", message: "Preparing deployment kits...", type: "agent" as const },
   { agent: "Agent 5", message: "Generating tailored cover letter templates...", type: "agent" as const },
   { agent: "Agent 5", message: "Optimizing resume highlights for each role...", type: "agent" as const },
-  // Loopable steps
   { agent: "System", message: "Processing large dataset, please wait...", type: "agent" as const },
   { agent: "Agent 3", message: "Fine-tuning match rankings...", type: "agent" as const },
   { agent: "Agent 4", message: "Optimizing roadmap sequences...", type: "agent" as const },
@@ -106,8 +106,8 @@ function JobCard({ job, index }: { job: JobMatch; index: number }) {
         </div>
 
         <div className="flex flex-wrap gap-1.5 mb-4">
-          {job.skills.slice(0, 4).map((skill) => (
-            <span key={skill} className="px-2 py-1 rounded text-xs bg-gray-100 text-ink">{skill}</span>
+          {job.skills.slice(0, 4).map((skill, i) => (
+            <span key={`${skill}-${i}`} className="px-2 py-1 rounded text-xs bg-gray-100 text-ink">{skill}</span>
           ))}
           {job.skills.length > 4 && (
             <span className="px-2 py-1 rounded text-xs bg-gray-100 text-secondary">+{job.skills.length - 4}</span>
@@ -118,8 +118,8 @@ function JobCard({ job, index }: { job: JobMatch; index: number }) {
           <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
             <div className="text-xs font-medium text-amber-700 mb-2">Skills to Develop:</div>
             <div className="flex flex-wrap gap-1.5">
-              {job.gapSkills?.map((skill) => (
-                <span key={skill} className="px-2 py-1 rounded text-xs bg-amber-100 text-amber-800">{skill}</span>
+              {job.gapSkills?.map((skill, i) => (
+                <span key={`${skill}-${i}`} className="px-2 py-1 rounded text-xs bg-amber-100 text-amber-800">{skill}</span>
               ))}
             </div>
           </div>
@@ -163,12 +163,15 @@ export default function Dashboard() {
   const [apiComplete, setApiComplete] = useState(false);
   const hasRunStrategyRef = useRef(false);
   
-  // State to manage modes
+  // State to manage modes (Standard vs Live Sync)
   const [processMode, setProcessMode] = useState<'onboarding' | 'sync'>('onboarding');
+  
+  // LIVE MODE STATE
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [lastSha, setLastSha] = useState<string | undefined>(undefined);
   
   // Refs to prevent duplicate execution
   const hasStartedSimulation = useRef(false);
-  const isSyncingRef = useRef(false); // New lock for Github Sync
 
   const transformStrategyJobs = useCallback((strategyJobs: StrategyJobMatch[]): JobMatch[] => {
     return strategyJobs.map((job, index) => {
@@ -260,6 +263,105 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [isInitializing, apiComplete, currentStep, processMode]);
 
+  // 3. --- LIVE WATCHDOG POLLING EFFECT ---
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (isLiveMode && sessionId) {
+      // Switch mode to stop simulation UI
+      setProcessMode('sync');
+      
+      // Log Start
+      setAgentLogs(prev => {
+        if (prev.some(log => log.message.includes("LIVE SYNC STARTED"))) return prev;
+        return [...prev, {
+          id: `live-start-${Date.now()}`,
+          agent: "Digital Twin Watchdog",
+          message: "🔴 LIVE SYNC STARTED: Listening for GitHub commits...",
+          type: "agent",
+          delay: 0
+        }];
+      });
+
+      intervalId = setInterval(async () => {
+        try {
+          const result = await checkWatchdog(sessionId, lastSha);
+
+          if (result.status === "updated" && result.new_sha && result.new_sha !== lastSha) {
+            // NEW CODE DETECTED!
+            setLastSha(result.new_sha);
+
+            setAgentLogs(prev => [...prev, {
+              id: `live-detect-${Date.now()}`,
+              agent: "Watchdog",
+              message: `⚡ CHANGE DETECTED in ${result.repo_name}! Analyzing...`,
+              type: "success",
+              delay: 0
+            }]);
+            
+            if (result.updated_skills && result.updated_skills.length > 0) {
+              // 1. EXTRACT FRESH SKILLS (The ones just found)
+              // We assume the backend puts new skills at the start of the list
+              const freshSkills = result.updated_skills.slice(0, 5); 
+              
+              setAgentLogs(prev => [...prev, {
+                id: `live-skills-${Date.now()}`,
+                agent: "Watchdog",
+                message: `✓ Extracted: ${freshSkills.join(", ")}...`,
+                type: "success",
+                delay: 200
+              }]);
+
+              // 2. CONSTRUCT BOOSTED QUERY (The Magic Fix)
+              // We repeat the fresh skills to give them 2x/3x weight in the vector search.
+              // We also add specific "Job Title" keywords based on the skills.
+              const boostedQuery = `
+                Urgent requirement for ${freshSkills.join(", ")}. 
+                Role: ${freshSkills[0]} Developer or Specialist.
+                Must have skills: ${freshSkills.join(", ")}.
+                Additional context: ${result.updated_skills.slice(5, 15).join(", ")}
+              `.replace(/\s+/g, " ").trim();
+
+              console.log("🚀 Sending Boosted Query:", boostedQuery);
+
+              setAgentLogs(prev => [...prev, {
+                id: `live-jobs-start-${Date.now()}`,
+                agent: "Agent 3",
+                message: `Pivoting strategy towards: ${freshSkills[0]}...`, // User feedback
+                type: "agent",
+                delay: 400
+              }]);
+
+              await runStrategy(boostedQuery, true);
+
+              setAgentLogs(prev => [...prev, {
+                id: `live-jobs-end-${Date.now()}`,
+                agent: "System",
+                message: "✓ Strategy Board Updated.",
+                type: "success",
+                delay: 600
+              }]);
+            }
+          } 
+        } catch (e) {
+          console.error("Watchdog polling error", e);
+        }
+      }, 10000); // Check every 10 seconds
+    } else if (!isLiveMode && lastSha) {
+       // Stop logic log
+       setAgentLogs(prev => [...prev, {
+        id: `live-stop-${Date.now()}`,
+        agent: "System",
+        message: "Live Sync Paused.",
+        type: "system",
+        delay: 0
+      }]);
+    }
+
+    return () => clearInterval(intervalId);
+  }, [isLiveMode, sessionId, lastSha, runStrategy]);
+
+
   useEffect(() => {
     if (strategyJobs.length > 0) {
       setJobs(transformStrategyJobs(strategyJobs));
@@ -270,92 +372,10 @@ export default function Dashboard() {
     setTimeout(() => {
       setIsInitializing(false);
       setShowJobs(true);
-      isSyncingRef.current = false; // Reset lock
     }, 500);
   };
 
-  const handleGithubSync = async () => {
-    // Prevent double invocation
-    if (isSyncingRef.current) return;
-    isSyncingRef.current = true;
-
-    setProcessMode('sync');
-    setIsInitializing(true);
-    setShowJobs(false);
-    
-    // Explicitly clear logs
-    setAgentLogs([]);
-    setCurrentStep(0);
-    setApiComplete(false);
-    hasStartedSimulation.current = false;
-
-    // Wait 1 tick for state to flush before blocking with prompt
-    setTimeout(async () => {
-      const repoUrl = prompt("Enter your GitHub Repo URL to sync:", "https://github.com/siddu28/Erflog");
-
-      if (repoUrl && sessionId) {
-        // Add start log AFTER prompt returns
-        const uniqueId = Math.random().toString(36).substring(7);
-        setAgentLogs([{
-          id: `git-start-${uniqueId}`,
-          agent: "Digital Twin Watchdog",
-          message: `Initiating Codebase Scan for ${repoUrl.split('/').pop()}...`,
-          type: "agent",
-          delay: 100,
-        }]);
-
-        try {
-          const result = await syncGithub(sessionId, repoUrl);
-          
-          setAgentLogs(prev => [...prev, {
-            id: `git-success-${Date.now()}`,
-            agent: "Watchdog",
-            message: `✓ Found new skills: ${result.updated_skills.slice(0, 5).join(", ")}...`,
-            type: "success",
-            delay: 200
-          }]);
-
-          setAgentLogs(prev => [...prev, {
-            id: `re-strat-${Date.now()}`,
-            agent: "Agent 3",
-            message: "Recalculating Strategy with NEW skills...",
-            type: "agent",
-            delay: 400
-          }]);
-
-          // --- FIX IS HERE ---
-          // Use the skills returned from the backend immediately
-          const newQuery = result.updated_skills.join(", ");
-          await runStrategy(newQuery, true); 
-          
-          setApiComplete(true);
-
-        } catch (error) {
-          setAgentLogs(prev => [...prev, {
-            id: `git-err-${Date.now()}`,
-            agent: "System",
-            message: "Sync failed. Check URL.",
-            type: "system",
-            delay: 0
-          }]);
-          setTimeout(() => {
-            setIsInitializing(false);
-            setShowJobs(true);
-            isSyncingRef.current = false;
-          }, 2000);
-        }
-      } else {
-        // Cancelled
-        setIsInitializing(false);
-        setShowJobs(true);
-        isSyncingRef.current = false;
-      }
-    }, 100);
-  };
-
   const handleRefresh = async () => {
-    if (isSyncingRef.current) return;
-
     setProcessMode('onboarding');
     setIsInitializing(true);
     setShowJobs(false);
@@ -427,9 +447,20 @@ export default function Dashboard() {
               <p className="text-secondary">{profile ? `Job matches for ${profile.name}` : "Your personalized job matches"}</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={handleGithubSync} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm border transition-all hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#E5E0D8" }}>
-                <Github className="w-4 h-4" /> Sync GitHub
+              {/* --- NEW LIVE SYNC BUTTON --- */}
+              <button
+                onClick={() => setIsLiveMode(!isLiveMode)}
+                disabled={isLoading}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm border transition-all ${
+                  isLiveMode 
+                    ? "bg-red-50 border-red-200 text-red-600 animate-pulse" 
+                    : "hover:bg-gray-50 border-[#E5E0D8]"
+                }`}
+              >
+                <Radio className={`w-4 h-4 ${isLiveMode ? "animate-ping" : ""}`} />
+                {isLiveMode ? "Live Listening..." : "Start Live Sync"}
               </button>
+
               <button onClick={handleRefresh} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm border transition-all hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#E5E0D8" }}>
                 <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} /> Refresh
               </button>
@@ -464,7 +495,9 @@ export default function Dashboard() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: showJobs ? 1 : 0 }} className="max-w-7xl mx-auto">
           {jobs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {jobs.map((job, index) => <JobCard key={job.id} job={job} index={index} />)}
+              {jobs.map((job, index) => (
+                 <JobCard key={`${job.id}-${index}`} job={job} index={index} />
+              ))}
             </div>
           ) : (
             <div className="text-center py-12">
