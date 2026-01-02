@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import DropZone from "@/components/DropZone";
 import AgentTerminal, { AgentLog } from "@/components/AgentTerminal";
-import { Sparkles, AlertCircle } from "lucide-react";
+import { Sparkles, AlertCircle, Github } from "lucide-react";
 import { useSession } from "@/lib/SessionContext";
 
 export default function Nexus() {
   const router = useRouter();
   const {
     initialize,
-    uploadUserResume,
+    uploadUserResume, // NOTE: You need to update your SessionContext to accept githubUrl
     isLoading,
     error,
     clearError,
@@ -23,6 +23,7 @@ export default function Nexus() {
   } = useSession();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [githubUrl, setGithubUrl] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [processingError, setProcessingError] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export default function Nexus() {
         },
       ]);
 
-      // Step 2: Upload resume
+      // Step 2: Upload resume & GitHub Link
       setAgentLogs((prev) => [
         ...prev,
         {
@@ -89,6 +90,20 @@ export default function Nexus() {
           delay: 400,
         },
       ]);
+
+      // Log GitHub Watchdog if URL is present
+      if (githubUrl) {
+        setAgentLogs((prev) => [
+          ...prev,
+          {
+            id: "4b",
+            agent: "Digital Twin Watchdog",
+            message: `Scanning Codebase: ${githubUrl.split('/').slice(-2).join('/')}...`,
+            type: "agent",
+            delay: 500,
+          },
+        ]);
+      }
 
       setAgentLogs((prev) => [
         ...prev,
@@ -101,7 +116,9 @@ export default function Nexus() {
         },
       ]);
 
-      const uploadSuccess = await uploadUserResume(file, newSessionId);
+      // Pass githubUrl to the context function
+      // NOTE: Ensure your SessionContext's uploadUserResume accepts this second argument
+      const uploadSuccess = await uploadUserResume(file, newSessionId, githubUrl);
 
       if (!uploadSuccess) {
         throw new Error("Failed to process resume");
@@ -117,6 +134,19 @@ export default function Nexus() {
           delay: 800,
         },
       ]);
+      
+      if (githubUrl) {
+         setAgentLogs((prev) => [
+        ...prev,
+        {
+          id: "6b",
+          agent: "Agent 1",
+          message: "Merging GitHub Analysis with Resume Vector...",
+          type: "success",
+          delay: 900,
+        },
+      ]);
+      }
 
       setAgentLogs((prev) => [
         ...prev,
@@ -244,16 +274,43 @@ export default function Nexus() {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="max-w-2xl mx-auto"
             >
-              <DropZone onFileSelect={handleFileSelect} disabled={isLoading} />
+              <div className="space-y-6">
+                
+                {/* 1. Resume Drop Zone */}
+                <div>
+                   <DropZone onFileSelect={handleFileSelect} disabled={isLoading} />
+                   <p className="text-center text-sm text-secondary mt-2">
+                    Accepted format: PDF Resume (up to 5MB)
+                  </p>
+                </div>
 
-              {/* Helper Text */}
-              <p className="text-center text-sm text-secondary mt-6">
-                Accepted format: PDF Resume (up to 5MB)
-              </p>
+                {/* 2. GitHub Input (Optional) */}
+                <div className="bg-white p-4 rounded-xl border border-gray-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Github className="w-4 h-4 text-ink" />
+                    <label htmlFor="github" className="text-sm font-medium text-ink">
+                      Connect GitHub (Digital Twin)
+                    </label>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-secondary">Optional</span>
+                  </div>
+                  <input
+                    type="url"
+                    id="github"
+                    placeholder="https://github.com/username/repo"
+                    value={githubUrl}
+                    onChange={(e) => setGithubUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D95D39]/20 focus:border-[#D95D39] transition-all text-sm"
+                  />
+                  <p className="text-xs text-secondary mt-1.5 ml-1">
+                    The Watchdog Agent will scan your code commits to verify skills in real-time.
+                  </p>
+                </div>
+
+              </div>
 
               {/* Session Info */}
               {sessionId && (
-                <p className="text-center text-xs text-secondary mt-2">
+                <p className="text-center text-xs text-secondary mt-6">
                   Active Session: {sessionId.substring(0, 8)}...
                 </p>
               )}

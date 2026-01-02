@@ -6,6 +6,16 @@ from core.db import db_manager
 # Import the new tool here
 from .tools import parse_pdf, extract_structured_data, generate_embedding, upload_resume_to_storage
 from pinecone import Pinecone, ServerlessSpec
+from .github_watchdog import fetch_and_analyze_github
+from typing import TypedDict, Optional
+from langgraph.graph import StateGraph, END
+from core.db import db_manager
+
+class Agent1State(TypedDict):
+    user_id: str
+    github_url: Optional[str]
+    resume_text: Optional[str]
+    profile_data: Optional[dict]
 
 def init_pinecone():
     api_key = os.getenv("PINECONE_API_KEY")
@@ -120,3 +130,41 @@ def perception_node(state: AgentState) -> dict[str, Any]:
         updated_state = state.copy()
         updated_state["results"] = {**state.get("results", {}), "error": str(e)}
         raise e
+    
+def github_watchdog_node(state: Agent1State):
+    github_url = state.get("github_url")
+    user_id = state.get("user_id")
+    
+    if github_url:
+        print("🚀 Starting GitHub Watchdog...")
+        analysis_result = fetch_and_analyze_github(github_url)
+        
+        if analysis_result:
+            print(f"✅ Watchdog found skills: {analysis_result}")
+            
+            # SAVE TO SUPABASE
+            # We update the 'users' table with this new data
+            db_manager.get_client().table("users").update({
+                "latest_code_analysis": analysis_result
+            }).eq("id", user_id).execute()
+            
+            # Return updated state
+            return {"profile_data": {"github_analysis": analysis_result}}
+    
+    return {}
+
+# --- GRAPH DEFINITION ---
+workflow = StateGraph(Agent1State)
+
+# Add your existing nodes
+workflow.add_node("parse_resume", perception_node) # Assuming this exists
+workflow.add_node("github_watchdog", github_watchdog_node) # <--- ADD THIS
+
+# Define Flow
+workflow.set_entry_point("parse_resume")
+
+# Run Watchdog after Resume (or in parallel if you want)
+workflow.add_edge("parse_resume", "github_watchdog")
+workflow.add_edge("github_watchdog", END)
+
+app = workflow.compile()

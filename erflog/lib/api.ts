@@ -46,12 +46,30 @@ export interface UserProfile {
   experience_summary: string;
   education: string;
   user_id: string;
+  latest_code_analysis?: Record<string, unknown>;
 }
 
 export interface UploadResumeResponse {
   status: string;
   session_id: string;
   profile: UserProfile;
+}
+
+export interface SyncGithubResponse {
+  status: string;
+  analysis: {
+    detected_skills: Array<{ skill: string; level: string; evidence: string }>;
+  };
+  updated_skills: string[];
+}
+
+// --- NEW INTERFACE FOR WATCHDOG CHECK ---
+export interface WatchdogCheckResponse {
+  status: "updated" | "no_change" | "error";
+  repo_name?: string;
+  new_sha?: string;
+  updated_skills?: string[];
+  analysis?: any;
 }
 
 export interface RoadmapResource {
@@ -117,7 +135,6 @@ export interface GenerateApplicationResponse {
   application: Application;
 }
 
-// Match endpoint types (Agent 3 with roadmap)
 export interface MatchJobResult {
   id: string;
   score: number;
@@ -138,7 +155,6 @@ export interface MatchResponse {
   matches: MatchJobResult[];
 }
 
-// Interview types
 export interface InterviewResponse {
   status: string;
   response: string;
@@ -146,14 +162,12 @@ export interface InterviewResponse {
   message_count: number;
 }
 
-// Generate Kit types
 export interface GenerateKitResponse {
   status: string;
   message: string;
   data: Record<string, unknown>;
 }
 
-// Error response type
 export interface ApiError {
   detail: string;
 }
@@ -162,43 +176,36 @@ export interface ApiError {
 // API Functions
 // ============================================================================
 
-/**
- * Get API info and available endpoints
- */
 export async function getApiInfo(): Promise<ApiInfo> {
   const response = await api.get<ApiInfo>("/");
   return response.data;
 }
 
-/**
- * Health check endpoint
- */
 export async function healthCheck(): Promise<HealthResponse> {
   const response = await api.get<HealthResponse>("/health");
   return response.data;
 }
 
-/**
- * Initialize a new session for the agent workflow
- */
 export async function initSession(): Promise<InitResponse> {
   const response = await api.post<InitResponse>("/api/init");
   return response.data;
 }
 
-/**
- * Upload a resume PDF and run Agent 1 (Perception)
- */
 export async function uploadResume(
   file: File,
-  sessionId: string
+  sessionId: string,
+  githubUrl?: string
 ): Promise<UploadResumeResponse> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("session_id", sessionId);
+  
+  if (githubUrl) {
+    formData.append("github_url", githubUrl);
+  }
 
   const response = await api.post<UploadResumeResponse>(
-    "/api/upload-resume",
+    "/api/upload-resume", 
     formData,
     {
       headers: {
@@ -209,10 +216,29 @@ export async function uploadResume(
   return response.data;
 }
 
-/**
- * Run Agent 3 (Strategist) for semantic job matching
- * Uses the provided query (skills/experience) to find best-fit jobs via vector search
- */
+export async function syncGithub(
+  sessionId: string, 
+  githubUrl: string
+): Promise<SyncGithubResponse> {
+  const response = await api.post<SyncGithubResponse>("/api/sync-github", {
+    session_id: sessionId,
+    github_url: githubUrl
+  });
+  return response.data;
+}
+
+// --- NEW FUNCTION: CHECK WATCHDOG STATUS ---
+export async function checkWatchdog(
+  sessionId: string,
+  lastKnownSha?: string
+): Promise<WatchdogCheckResponse> {
+  const response = await api.post<WatchdogCheckResponse>("/api/watchdog/check", {
+    session_id: sessionId,
+    last_known_sha: lastKnownSha
+  });
+  return response.data;
+}
+
 export async function generateStrategy(
   query: string
 ): Promise<GenerateStrategyResponse> {
@@ -225,9 +251,6 @@ export async function generateStrategy(
   return response.data;
 }
 
-/**
- * Run Agent 4 (Operative) to generate tailored resume and outreach
- */
 export async function generateApplication(
   sessionId: string,
   jobDescription?: string
@@ -242,9 +265,6 @@ export async function generateApplication(
   return response.data;
 }
 
-/**
- * Agent 3: Job Match with Tier classification and Learning Roadmaps
- */
 export async function matchJobs(query: string): Promise<MatchResponse> {
   const response = await api.post<MatchResponse>("/api/match", {
     query,
@@ -252,9 +272,6 @@ export async function matchJobs(query: string): Promise<MatchResponse> {
   return response.data;
 }
 
-/**
- * Agent 6: Interview Chat - Start or continue conversation
- */
 export async function interviewChat(
   sessionId: string,
   jobContext: string,
@@ -268,9 +285,6 @@ export async function interviewChat(
   return response.data;
 }
 
-/**
- * Generate deployment kit (resume PDF) for a specific job
- */
 export async function generateKit(
   userName: string,
   jobTitle: string,
@@ -288,20 +302,15 @@ export async function generateKit(
     }
   );
 
-  // Check if response is PDF or JSON
   const contentType = response.headers["content-type"];
   if (contentType?.includes("application/pdf")) {
     return response.data as Blob;
   }
 
-  // Parse JSON response
   const text = await (response.data as Blob).text();
   return JSON.parse(text) as GenerateKitResponse;
 }
 
-/**
- * Legacy analyze endpoint
- */
 export async function analyze(
   userInput: string,
   context: Record<string, unknown> = {}
@@ -312,10 +321,6 @@ export async function analyze(
   });
   return response.data;
 }
-
-// ============================================================================
-// Error Handling Helper
-// ============================================================================
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -337,5 +342,4 @@ export function getErrorMessage(error: unknown): string {
   return "An unexpected error occurred";
 }
 
-// Export the axios instance for custom requests
 export default api;
