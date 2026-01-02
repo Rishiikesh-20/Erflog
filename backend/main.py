@@ -14,11 +14,13 @@ from dotenv import load_dotenv
 # Load env FIRST before any other imports
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Body
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
+# Import auth dependency
+from auth.dependencies import get_current_user
 # --- IMPORTS FOR AGENTS & DB ---
 from core.state import AgentState
 from core.db import db_manager  # Database connection
@@ -31,7 +33,7 @@ from agents.agent_1_perception.graph import perception_node, app as perception_a
 from agents.agent_1_perception.github_watchdog import fetch_and_analyze_github  # <--- NEW IMPORT
 from agents.agent_2_market.graph import market_scan_node
 from agents.agent_3_strategist.graph import search_jobs as strategist_search_jobs, process_career_strategy
-from agents.agent_6_interviewer.graph import run_interview_turn
+from agents.agent_6_chat_interview.graph import run_interview_turn
 
 app = FastAPI(
     title="Career Flow AI API",
@@ -129,8 +131,22 @@ async def root():
             "interview": "/api/interview/chat",
             "legacy": ["/api/match", "/api/generate-kit"],
             "agent4": "/agent4",
+            "auth": "/api/me"
             "watchdog": "/api/sync-github" # <--- Added to documentation
         }
+    }
+
+
+@app.get("/api/me")
+async def get_me(user=Depends(get_current_user)):
+    """
+    Protected endpoint - returns current user info from JWT.
+    Requires valid Supabase JWT in Authorization header.
+    """
+    return {
+        "user_id": user["sub"],
+        "email": user.get("email"),
+        "provider": user.get("app_metadata", {}).get("provider")
     }
 
 
