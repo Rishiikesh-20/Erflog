@@ -12,17 +12,28 @@ interface RoadmapResource {
   url: string;
 }
 
-interface RoadmapDay {
+interface GraphNode {
+  id: string;
+  label: string;
   day: number;
-  topic: string;
-  task?: string;
-  tasks?: string[];
-  resources: RoadmapResource[];
+  type: "concept" | "practice" | "project";
+  description: string;
+}
+
+interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+interface RoadmapGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 }
 
 interface RoadmapDetails {
   missing_skills: string[];
-  roadmap: RoadmapDay[];
+  graph: RoadmapGraph;
+  resources: Record<string, RoadmapResource[]>;
 }
 
 interface Job {
@@ -62,14 +73,9 @@ export default function JobsPage() {
       ui_color: result.ui_color,
       roadmap_details: result.roadmap_details
         ? {
-            missing_skills: result.roadmap_details.missing_skills,
-            roadmap: result.roadmap_details.roadmap.map((day) => ({
-              day: day.day,
-              topic: day.topic,
-              task: day.task,
-              tasks: day.task ? [day.task] : [],
-              resources: day.resources,
-            })),
+            missing_skills: result.roadmap_details.missing_skills || [],
+            graph: result.roadmap_details.graph || { nodes: [], edges: [] },
+            resources: result.roadmap_details.resources || {},
           }
         : null,
     }));
@@ -245,105 +251,29 @@ export default function JobsPage() {
                       </div>
                     )}
 
-                  {/* Learning Roadmap */}
+                  {/* Learning Roadmap Preview */}
                   {job.roadmap_details &&
-                    job.roadmap_details.roadmap.length > 0 && (
+                    job.roadmap_details.graph &&
+                    job.roadmap_details.graph.nodes.length > 0 && (
                       <div
                         className="p-6 border-t"
                         style={{ borderColor: "#E5E0D8" }}
                       >
-                        <h3 className="font-serif-bold text-lg text-ink mb-6">
-                          Learning Roadmap
+                        <h3 className="font-serif-bold text-lg text-ink mb-4">
+                          Learning Roadmap Available
                         </h3>
-                        <div className="space-y-6">
-                          {job.roadmap_details.roadmap.map((day, idx) => (
-                            <div key={idx} className="relative pl-8">
-                              {/* Timeline Line */}
-                              {job.roadmap_details &&
-                                idx <
-                                  job.roadmap_details.roadmap.length - 1 && (
-                                  <div
-                                    className="absolute left-3 top-8 w-0.5 h-full"
-                                    style={{ backgroundColor: "#E5E0D8" }}
-                                  />
-                                )}
-
-                              {/* Day Circle */}
-                              <div
-                                className="absolute left-0 top-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                                style={{ backgroundColor: "#D95D39" }}
-                              >
-                                {day.day}
-                              </div>
-
-                              {/* Day Content */}
-                              <div
-                                className="bg-white rounded-lg border p-5"
-                                style={{ borderColor: "#E5E0D8" }}
-                              >
-                                <h4 className="font-serif-bold text-ink mb-3">
-                                  {day.topic}
-                                </h4>
-
-                                {/* Tasks */}
-                                <div className="mb-4">
-                                  <p className="text-sm font-medium text-secondary mb-2">
-                                    Tasks:
-                                  </p>
-                                  <ul className="space-y-2">
-                                    {(
-                                      day.tasks || (day.task ? [day.task] : [])
-                                    ).map((task, taskIdx) => (
-                                      <li
-                                        key={taskIdx}
-                                        className="flex items-start gap-2 text-sm text-ink"
-                                      >
-                                        <span
-                                          className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                          style={{ backgroundColor: "#D95D39" }}
-                                        />
-                                        {task}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-
-                                {/* Resources */}
-                                <div>
-                                  <p className="text-sm font-medium text-secondary mb-2">
-                                    Resources:
-                                  </p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {day.resources.map((resource, resIdx) => (
-                                      <a
-                                        key={resIdx}
-                                        href={resource.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-ink hover:bg-gray-200 transition-colors"
-                                      >
-                                        <svg
-                                          className="w-3 h-3"
-                                          fill="none"
-                                          viewBox="0 0 24 24"
-                                          stroke="currentColor"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                                          />
-                                        </svg>
-                                        {resource.name}
-                                      </a>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                        <p className="text-secondary mb-4">
+                          A personalized {job.roadmap_details.graph.nodes.length}-step learning roadmap has been generated for this position.
+                        </p>
+                        <button
+                          onClick={() => router.push(`/jobs/${job.id}`)}
+                          className="px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+                          style={{ backgroundColor: "#D95D39" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#C14D29")}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#D95D39")}
+                        >
+                          View Interactive Roadmap →
+                        </button>
                       </div>
                     )}
 

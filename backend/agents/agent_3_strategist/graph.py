@@ -7,6 +7,9 @@ from pinecone import Pinecone
 from google import genai
 from google.genai import types
 
+# Import the new roadmap generator
+from .roadmap import generate_gap_roadmap
+
 # --- Configuration & Setup ---
 load_dotenv()
 
@@ -86,55 +89,6 @@ def search_jobs(user_query_text: str, top_k: int = 10) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"❌ Search Failed: {e}")
         return []
-
-# --- Core Logic: Gap Analysis (Gemini) ---
-
-def generate_gap_roadmap(user_skills_text: str, job_description: str) -> Dict[str, Any]:
-    _init_clients()
-    logger.info("🚧 Triggering Gap Analysis...")
-
-    prompt = f"""
-    ROLE: Elite Technical Career Strategist.
-    OBJECTIVE: Gap Analysis & 3-Day Micro-Roadmap.
-    
-    CANDIDATE: "{user_skills_text[:1500]}"
-    JOB: "{job_description[:1500]}"
-    
-    TASK:
-    1. Identify 3 missing skills.
-    2. Create a 3-Day Roadmap (Topic, Task, 1 Doc Link, 1 YouTube Search Link).
-    
-    OUTPUT JSON:
-    {{
-      "missing_skills": ["Skill 1", "Skill 2"],
-      "roadmap": [
-        {{
-          "day": 1,
-          "topic": "...",
-          "task": "...",
-          "resources": [
-             {{ "name": "Docs", "url": "https://..." }},
-             {{ "name": "Video", "url": "https://www.youtube.com/results?search_query=..." }}
-          ]
-        }}
-      ]
-    }}
-    RETURN JSON ONLY.
-    """
-
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json")
-        )
-        text = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(text)
-    except Exception as e:
-        logger.error(f"❌ Roadmap Generation Error: {e}")
-        return None
-
-# --- Core Logic: The Strategist Orchestrator ---
 
 def process_career_strategy(user_query: str, max_jobs: int = 5) -> Dict[str, Any]:
     """

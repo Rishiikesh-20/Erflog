@@ -1,78 +1,84 @@
-'use client';
-
-import Button from '@/components/Button';
-import GapAnalysis from './GapAnalysis';
-import Roadmap from './Roadmap';
+import { motion } from 'framer-motion';
+import { Briefcase, MapPin, DollarSign, Clock, ExternalLink, Globe } from 'lucide-react';
+import Roadmap from './Roadmap'; 
+import { StrategyJobMatch, RoadmapDetails } from '@/lib/api';
 
 interface JobDetailProps {
-  jobId: string;
-  jobTitle: string;
-  companyName: string;
-  jobDescription: string;
-  matchScore: number;
-  gaps?: Array<{
-    skill: string;
-    importance: 'high' | 'medium' | 'low';
-    estimatedTime: string;
-  }>;
-  roadmapItems?: Array<{
-    day: number;
-    title: string;
-    completed?: boolean;
-  }>;
+  job: StrategyJobMatch;
+  onApply: () => void;
 }
 
-export default function JobDetail({
-  jobTitle,
-  companyName,
-  jobDescription,
-  matchScore,
-  gaps = [],
-  roadmapItems = [],
-}: JobDetailProps) {
+export default function JobDetail({ job, onApply }: JobDetailProps) {
+  // Safe check: Ensure roadmap_details exists
+  const hasRoadmap = job.roadmap_details;
+
   return (
-    <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-      {/* Left Panel: Job Content (60%) */}
-      <div className="lg:col-span-2">
-        <div className="bg-surface rounded-lg border border-surface p-8" style={{ borderColor: '#E5E0D8' }}>
-          <h2 className="font-serif-bold text-3xl text-ink mb-2">{jobTitle}</h2>
-          <p className="text-secondary text-lg mb-6">{companyName}</p>
-          <div className="prose prose-sm max-w-none">
-            <p className="text-ink leading-relaxed whitespace-pre-wrap font-serif">
-              {jobDescription}
-            </p>
+    <div className="bg-surface rounded-xl border border-[#E5E0D8] overflow-hidden shadow-sm">
+      <div className="p-8">
+        {/* Header Section */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h2 className="font-serif-bold text-3xl text-ink mb-2">{job.title}</h2>
+            <div className="flex items-center gap-2 text-lg text-secondary">
+              <Briefcase className="w-5 h-5" />
+              {job.company}
+            </div>
+          </div>
+          {job.score >= 80 && (
+            <div className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium text-sm flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" />
+              High Match
+            </div>
+          )}
+        </div>
+
+        {/* Job Metadata Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1"><MapPin size={12}/> Location</div>
+            <div className="font-medium text-ink">Remote / Hybrid</div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+             <div className="text-xs text-gray-500 mb-1 flex items-center gap-1"><DollarSign size={12}/> Salary</div>
+             <div className="font-medium text-ink">Competitive</div>
+          </div>
+           <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+             <div className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Clock size={12}/> Posted</div>
+             <div className="font-medium text-ink">Recently</div>
+          </div>
+           <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+             <div className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Globe size={12}/> Source</div>
+             <div className="font-medium text-ink">LinkedIn</div>
           </div>
         </div>
-      </div>
 
-      {/* Right Panel: Dark Terminal Panel (40%) */}
-      <div
-        className="lg:col-span-1 rounded-lg p-8 text-white"
-        style={{ backgroundColor: '#1A1A1A' }}
-      >
-        {/* Match Protocol Status */}
-        <div className="mb-6">
-          <h3 className="font-mono text-2xl font-bold text-accent mb-2">
-            Match Protocol: {matchScore}%
-          </h3>
-          <p className="text-gray-400 text-sm">Ready</p>
+        {/* Description */}
+        <div className="prose prose-sm max-w-none text-secondary mb-8">
+          <h3 className="text-ink font-bold text-lg mb-2">About the Role</h3>
+          <p className="leading-relaxed whitespace-pre-line">{job.description}</p>
         </div>
 
-        {/* Action Button */}
-        <Button
-          variant="solid"
-          size="full"
-          className="font-mono font-semibold tracking-wider"
-          style={{ letterSpacing: '0.05em' }}
+        {/* --- ROADMAP SECTION --- */}
+        {hasRoadmap ? (
+           // FIX: Explicitly cast type to satisfy TypeScript
+           <Roadmap data={job.roadmap_details as RoadmapDetails} />
+        ) : (
+          <div className="mt-8 p-6 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-center">
+            <p className="text-gray-500 italic">
+              AI Analysis in progress... Roadmap will appear here shortly.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Footer Action */}
+      <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end">
+        <button 
+          onClick={onApply}
+          className="px-8 py-3 bg-[#D95D39] text-white font-medium rounded-lg hover:opacity-90 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
         >
-          GENERATE DEPLOYMENT KIT
-        </Button>
-
-        {/* Gap Analysis */}
-        <GapAnalysis gaps={gaps} />
-
-        {/* Roadmap */}
-        <Roadmap items={roadmapItems} />
+          Apply Now
+        </button>
       </div>
     </div>
   );

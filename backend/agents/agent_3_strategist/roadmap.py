@@ -14,46 +14,76 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 def generate_gap_roadmap(user_skills_text: str, job_description: str):
     """
-    Generates a 3-Day Micro-Learning Plan to bridge the gap.
+    Generates a visual dependency graph (DAG) for the learning roadmap with nodes and edges.
+    Returns graph structure optimized for visualization with D3.js or Cytoscape.
     """
-    print("🚧 Generating Roadmap...")
-    
     prompt = f"""
-    You are an expert Technical Career Coach and Curriculum Designer.
+    You are an expert Technical Curriculum Architect specializing in skill gap analysis.
     
     TASK:
-    Perform a Gap Analysis between the User's Skills and the Job Description.
-    Identify the top 3 missing critical skills.
-    Create a "3-Day Micro-Roadmap" to learn these specific missing skills.
+    Analyze the gap between User Skills and Job Requirements.
+    Create a 3-day learning roadmap as a DIRECTED ACYCLIC GRAPH (DAG).
     
     INPUTS:
-    User Skills: "{user_skills_text}"
+    Current Skills: "{user_skills_text}"
     Target Job: "{job_description}"
     
     REQUIREMENTS:
-    1. Be specific (don't say "Learn Python", say "Learn FastAPI Dependency Injection").
-    2. Provide REAL documentation links (Official Docs).
-    3. Provide YouTube Search queries for finding tutorials.
-    4. Output MUST be valid JSON.
+    1. Identify 4-6 critical learning topics/concepts
+    2. Create a dependency graph showing which topics must be learned before others
+    3. Distribute topics across 3 days (assign to day 1, 2, or 3)
+    4. Include description, type (concept/practice/project), and resources for each topic
+    5. Create edges showing dependencies between topics (source -> target means: source must be learned first)
     
-    OUTPUT JSON FORMAT:
+    OUTPUT FORMAT (JSON ONLY - NO MARKDOWN):
     {{
-      "missing_skills": ["Skill 1", "Skill 2"],
-      "roadmap": [
-        {{
-          "day": 1,
-          "topic": "Title of the day",
-          "tasks": ["Task 1", "Task 2"],
-          "resources": [
-             {{ "name": "Official Docs", "url": "https://..." }},
-             {{ "name": "YouTube Tutorial", "url": "https://www.youtube.com/results?search_query=..." }}
-          ]
-        }},
-        ... (Day 2 and Day 3)
-      ]
+      "missing_skills": ["Skill 1", "Skill 2", "Skill 3"],
+      "graph": {{
+        "nodes": [
+          {{
+            "id": "node1",
+            "label": "Topic/Concept Name",
+            "day": 1,
+            "type": "concept",
+            "description": "What will be learned and why it matters"
+          }},
+          {{
+            "id": "node2",
+            "label": "Practical Implementation",
+            "day": 2,
+            "type": "practice",
+            "description": "Hands-on exercises and coding tasks"
+          }},
+          {{
+            "id": "node3",
+            "label": "Advanced Patterns",
+            "day": 3,
+            "type": "project",
+            "description": "Build a small project applying all concepts"
+          }}
+        ],
+        "edges": [
+          {{ "source": "node1", "target": "node2" }},
+          {{ "source": "node2", "target": "node3" }}
+        ]
+      }},
+      "resources": {{
+        "node1": [
+          {{ "name": "Official Docs", "url": "https://..." }},
+          {{ "name": "Tutorial Video", "url": "https://www.youtube.com/results?search_query=..." }}
+        ],
+        "node2": [
+          {{ "name": "Hands-on Guide", "url": "https://..." }},
+          {{ "name": "Code Examples", "url": "https://github.com/..." }}
+        ],
+        "node3": [
+          {{ "name": "Project Ideas", "url": "https://..." }},
+          {{ "name": "Best Practices", "url": "https://..." }}
+        ]
+      }}
     }}
     
-    RETURN ONLY JSON. NO MARKDOWN.
+    CRITICAL: Return ONLY valid JSON, no markdown, no explanations.
     """
     
     try:
@@ -61,15 +91,52 @@ def generate_gap_roadmap(user_skills_text: str, job_description: str):
             model="gemini-2.0-flash",
             contents=prompt,
         )
-        # Clean the response (remove ```json if present)
         text = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(text)
+        result = json.loads(text)
+        
+        # Validate graph structure
+        if 'graph' in result and 'nodes' in result['graph']:
+            return result
+        else:
+            raise ValueError("Invalid graph structure in response")
+            
     except Exception as e:
-        print(f"❌ Roadmap Generation Failed: {e}")
-        # Fallback Roadmap for Demo safety
+        print(f"❌ Roadmap Graph Generation Failed: {e}")
+        # Return a fallback structured graph
         return {
-            "missing_skills": ["Advanced Concepts"],
-            "roadmap": [
-                {"day": 1, "topic": "Review Requirements", "tasks": ["Read Docs"], "resources": []}
-            ]
+            "missing_skills": ["Core Concepts", "Practical Implementation"],
+            "graph": {
+                "nodes": [
+                    {
+                        "id": "node1",
+                        "label": "Understand Job Requirements",
+                        "day": 1,
+                        "type": "concept",
+                        "description": "Analyze the job description and identify key requirements"
+                    },
+                    {
+                        "id": "node2",
+                        "label": "Build Foundation Skills",
+                        "day": 2,
+                        "type": "practice",
+                        "description": "Practice fundamental concepts required for the role"
+                    },
+                    {
+                        "id": "node3",
+                        "label": "Practice with Examples",
+                        "day": 3,
+                        "type": "project",
+                        "description": "Work on practical projects to solidify learning"
+                    }
+                ],
+                "edges": [
+                    {"source": "node1", "target": "node2"},
+                    {"source": "node2", "target": "node3"}
+                ]
+            },
+            "resources": {
+                "node1": [{"name": "Official Docs", "url": "https://docs.example.com"}],
+                "node2": [{"name": "Tutorial", "url": "https://example.com/tutorial"}],
+                "node3": [{"name": "Project Guide", "url": "https://example.com/projects"}]
+            }
         }
