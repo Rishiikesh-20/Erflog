@@ -9,6 +9,8 @@ import {
   LayoutDashboard,
   Bot,
   MessageCircle,
+  Mic,
+  MessageSquare,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -106,18 +108,58 @@ export default function Sidebar() {
             <Link
               href="/interview"
               className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                isActive("/interview")
+                pathname === "/interview"
                   ? "bg-accent text-surface"
                   : "text-ink hover:bg-surface"
               }`}
               style={
-                isActive("/interview")
+                pathname === "/interview"
                   ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
                   : { color: "#1A1A1A" }
               }
             >
               <MessageCircle size={20} />
-              Interview Prep
+              Interview (Chat)
+            </Link>
+          </li>
+
+          {/* Voice Interview */}
+          <li>
+            <Link
+              href="/interview/voice"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                isActive("/interview/voice")
+                  ? "bg-accent text-surface"
+                  : "text-ink hover:bg-surface"
+              }`}
+              style={
+                isActive("/interview/voice")
+                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
+                  : { color: "#1A1A1A" }
+              }
+            >
+              <Mic size={20} />
+              Interview (Voice)
+            </Link>
+          </li>
+
+          {/* Text Interview - WebSocket Test */}
+          <li>
+            <Link
+              href="/interview/text"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                isActive("/interview/text")
+                  ? "bg-accent text-surface"
+                  : "text-ink hover:bg-surface"
+              }`}
+              style={
+                isActive("/interview/text")
+                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
+                  : { color: "#1A1A1A" }
+              }
+            >
+              <MessageSquare size={20} />
+              Interview (WS Test)
             </Link>
           </li>
 
