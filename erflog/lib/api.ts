@@ -3,7 +3,6 @@ import axios, { AxiosError } from "axios";
 // API Base URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Create axios instance with default config
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -63,7 +62,6 @@ export interface SyncGithubResponse {
   updated_skills: string[];
 }
 
-// --- NEW INTERFACE FOR WATCHDOG CHECK ---
 export interface WatchdogCheckResponse {
   status: "updated" | "no_change" | "error";
   repo_name?: string;
@@ -77,16 +75,30 @@ export interface RoadmapResource {
   url: string;
 }
 
-export interface RoadmapDay {
+// --- NEW GRAPH TYPES ---
+export interface GraphNode {
+  id: string;
+  label: string;
   day: number;
-  topic: string;
-  task: string;
-  resources: RoadmapResource[];
+  type: "concept" | "practice" | "project";
+  description: string;
 }
 
+export interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface RoadmapGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// Updated RoadmapDetails to use the Graph
 export interface RoadmapDetails {
   missing_skills: string[];
-  roadmap: RoadmapDay[];
+  graph: RoadmapGraph;
+  resources: Record<string, RoadmapResource[]>; 
 }
 
 export interface StrategyJobMatch {
@@ -135,19 +147,7 @@ export interface GenerateApplicationResponse {
   application: Application;
 }
 
-export interface MatchJobResult {
-  id: string;
-  score: number;
-  title: string;
-  company: string;
-  description: string;
-  link: string;
-  tier: string;
-  status: string;
-  action: string;
-  ui_color: string;
-  roadmap_details: RoadmapDetails | null;
-}
+export interface MatchJobResult extends StrategyJobMatch {}
 
 export interface MatchResponse {
   status: string;
@@ -182,6 +182,7 @@ export interface ApiError {
 // ============================================================================
 // API Functions
 // ============================================================================
+// (Keeping all existing functions standard)
 
 export async function getApiInfo(): Promise<ApiInfo> {
   const response = await api.get<ApiInfo>("/");
@@ -206,142 +207,60 @@ export async function uploadResume(
   const formData = new FormData();
   formData.append("file", file);
   formData.append("session_id", sessionId);
-  
-  if (githubUrl) {
-    formData.append("github_url", githubUrl);
-  }
-
-  const response = await api.post<UploadResumeResponse>(
-    "/api/upload-resume", 
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    }
-  );
+  if (githubUrl) formData.append("github_url", githubUrl);
+  const response = await api.post<UploadResumeResponse>("/api/upload-resume", formData, { headers: { "Content-Type": "multipart/form-data" } });
   return response.data;
 }
 
-export async function syncGithub(
-  sessionId: string, 
-  githubUrl: string
-): Promise<SyncGithubResponse> {
-  const response = await api.post<SyncGithubResponse>("/api/sync-github", {
-    session_id: sessionId,
-    github_url: githubUrl
-  });
+export async function syncGithub(sessionId: string, githubUrl: string): Promise<SyncGithubResponse> {
+  const response = await api.post<SyncGithubResponse>("/api/sync-github", { session_id: sessionId, github_url: githubUrl });
   return response.data;
 }
 
-// --- NEW FUNCTION: CHECK WATCHDOG STATUS ---
-export async function checkWatchdog(
-  sessionId: string,
-  lastKnownSha?: string
-): Promise<WatchdogCheckResponse> {
-  const response = await api.post<WatchdogCheckResponse>("/api/watchdog/check", {
-    session_id: sessionId,
-    last_known_sha: lastKnownSha
-  });
+export async function checkWatchdog(sessionId: string, lastKnownSha?: string): Promise<WatchdogCheckResponse> {
+  const response = await api.post<WatchdogCheckResponse>("/api/watchdog/check", { session_id: sessionId, last_known_sha: lastKnownSha });
   return response.data;
 }
 
-export async function generateStrategy(
-  query: string
-): Promise<GenerateStrategyResponse> {
-  const response = await api.post<GenerateStrategyResponse>(
-    "/api/generate-strategy",
-    {
-      query,
-    }
-  );
+export async function generateStrategy(query: string): Promise<GenerateStrategyResponse> {
+  const response = await api.post<GenerateStrategyResponse>("/api/generate-strategy", { query });
   return response.data;
 }
 
-export async function generateApplication(
-  sessionId: string,
-  jobDescription?: string
-): Promise<GenerateApplicationResponse> {
-  const response = await api.post<GenerateApplicationResponse>(
-    "/api/generate-application",
-    {
-      session_id: sessionId,
-      ...(jobDescription && { job_description: jobDescription }),
-    }
-  );
+export async function generateApplication(sessionId: string, jobDescription?: string): Promise<GenerateApplicationResponse> {
+  const response = await api.post<GenerateApplicationResponse>("/api/generate-application", { session_id: sessionId, ...(jobDescription && { job_description: jobDescription }) });
   return response.data;
 }
 
 export async function matchJobs(query: string): Promise<MatchResponse> {
-  const response = await api.post<MatchResponse>("/api/match", {
-    query,
-  });
+  const response = await api.post<MatchResponse>("/api/match", { query });
   return response.data;
 }
 
-export async function interviewChat(
-  sessionId: string,
-  jobContext: string,
-  userMessage: string = ""
-): Promise<InterviewResponse> {
-  const response = await api.post<InterviewResponse>("/api/interview/chat", {
-    session_id: sessionId,
-    user_message: userMessage,
-    job_context: jobContext,
-  });
+export async function interviewChat(sessionId: string, jobContext: string, userMessage: string = ""): Promise<InterviewResponse> {
+  const response = await api.post<InterviewResponse>("/api/interview/chat", { session_id: sessionId, user_message: userMessage, job_context: jobContext });
   return response.data;
 }
 
-export async function generateKit(
-  userName: string,
-  jobTitle: string,
-  jobCompany: string,
-  sessionId?: string,
-  jobDescription?: string
-): Promise<GenerateKitResponse | Blob> {
-  const response = await api.post(
-    "/api/generate-kit",
-    {
-      user_name: userName,
-      job_title: jobTitle,
-      job_company: jobCompany,
-      session_id: sessionId,
-      job_description: jobDescription,
-    }
-  );
-
-  // Check if response is JSON (which it should be now)
+export async function generateKit(userName: string, jobTitle: string, jobCompany: string, sessionId?: string, jobDescription?: string): Promise<GenerateKitResponse | Blob> {
+  const response = await api.post("/api/generate-kit", { user_name: userName, job_title: jobTitle, job_company: jobCompany, session_id: sessionId, job_description: jobDescription });
   return response.data as GenerateKitResponse;
 }
 
-export async function analyze(
-  userInput: string,
-  context: Record<string, unknown> = {}
-): Promise<{ status: string; message: string; data: Record<string, unknown> }> {
-  const response = await api.post("/analyze", {
-    user_input: userInput,
-    context,
-  });
+export async function analyze(userInput: string, context: Record<string, unknown> = {}): Promise<{ status: string; message: string; data: Record<string, unknown> }> {
+  const response = await api.post("/analyze", { user_input: userInput, context });
   return response.data;
 }
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<ApiError>;
-    if (axiosError.response?.data?.detail) {
-      return axiosError.response.data.detail;
-    }
-    if (axiosError.response?.status === 404) {
-      return "Session not found. Please start a new session.";
-    }
-    if (axiosError.response?.status === 500) {
-      return "Server error. Please try again later.";
-    }
+    if (axiosError.response?.data?.detail) return axiosError.response.data.detail;
+    if (axiosError.response?.status === 404) return "Session not found. Please start a new session.";
+    if (axiosError.response?.status === 500) return "Server error. Please try again later.";
     return axiosError.message;
   }
-  if (error instanceof Error) {
-    return error.message;
-  }
+  if (error instanceof Error) return error.message;
   return "An unexpected error occurred";
 }
 
