@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
 import { SessionProvider } from "@/lib/SessionContext";
+import { AuthProvider } from "@/lib/AuthContext";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,13 +31,15 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         style={{ backgroundColor: "#F7F5F0" }}
       >
-        <SessionProvider>
-          <Sidebar />
-          {/* Main content area with left margin for sidebar */}
-          <main className="ml-[280px] min-h-screen w-[calc(100%-280px)]">
-            {children}
-          </main>
-        </SessionProvider>
+        <AuthProvider>
+          <SessionProvider>
+            <Sidebar />
+            {/* Main content area with left margin for sidebar */}
+            <main className="ml-[280px] min-h-screen w-[calc(100%-280px)]">
+              {children}
+            </main>
+          </SessionProvider>
+        </AuthProvider>
       </body>
     </html>
   );

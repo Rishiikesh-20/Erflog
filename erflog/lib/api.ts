@@ -1,4 +1,5 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import { supabase } from "./supabase";
 
 // API Base URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -10,6 +11,37 @@ const api = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+// ============================================================================
+// Auth Interceptor - Automatically attach JWT to all requests
+// ============================================================================
+
+api.interceptors.request.use(
+  async (config: InternalAxiosRequestConfig) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
+export interface AuthUser {
+  user_id: string;
+  email: string | null;
+  provider: string | null;
+}
 
 // ============================================================================
 // Type Definitions
@@ -345,4 +377,42 @@ export function getErrorMessage(error: unknown): string {
   return "An unexpected error occurred";
 }
 
+// ============================================================================
+// Auth API Functions
+// ============================================================================
+
+/**
+ * Get current authenticated user info from backend
+ */
+export async function getCurrentUser(): Promise<AuthUser> {
+  const response = await api.get<AuthUser>("/api/me");
+  return response.data;
+}
+
+/**
+ * Simple fetch wrapper with JWT for non-axios calls
+ */
+export async function apiFetch<T = unknown>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session?.access_token}`,
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+
+  return res.json();
+}
 export default api;
