@@ -484,10 +484,13 @@ def mutate_resume_for_job(user_id: str, job_description: str) -> dict:
         # 4. Render LaTeX
         print("🎨 [Agent 4] Rendering LaTeX Template...")
         # Template is at backend/core/template.jinja
-        template_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(original_pdf_path))), "core")
-        # Hardcoding fallback for safety if path logic fails
-        if not os.path.exists(os.path.join(template_dir, "template.jinja")):
-             template_dir = "/Users/meenakshiganesan/Karthik/Erflog/backend/core"
+        # Use __file__ to get correct path from this tools.py location
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        # Navigate: agent_4_operative -> agents -> backend -> core
+        template_dir = os.path.join(current_file_dir, "..", "..", "core")
+        template_dir = os.path.abspath(template_dir)  # Normalize the path
+        
+        print(f"   📁 Template directory: {template_dir}")
              
         latex_engine = LatexSurgeon(template_dir=template_dir)
         tex_content = latex_engine.fill_template("template.jinja", structured_data)

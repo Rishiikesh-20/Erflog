@@ -20,3 +20,5 @@ docx2pdf
 python-docx
 pdfminer.six
 spacy
+reportlab
+en_core_web_sm==3.7.0
