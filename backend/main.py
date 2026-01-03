@@ -24,6 +24,7 @@ from core.state import AgentState
 from core.db import db_manager  # Database connection
 
 # Import routers
+from agents.agent_1_perception.router import router as agent1_router # Import Router
 from agents.agent_4_operative import agent4_router
 
 # Import Agent Nodes/Functions
@@ -49,6 +50,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(agent1_router) # /api/perception/upload-resume
 app.include_router(agent4_router)
 
 # -----------------------------------------------------------------------------
@@ -312,132 +314,6 @@ async def init_session():
     return {"status": "success", "session_id": session_id, "message": "Session initialized."}
 
 
-@app.post("/api/upload-resume")
-async def upload_resume(file: UploadFile = File(...), session_id: str = Form(...)):
-    """Upload a resume PDF and run Agent 1 (Perception)."""
-    state = get_session(session_id)
-    
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
-    
-    try:
-        temp_dir = Path(tempfile.gettempdir()) / "career_flow_uploads"
-        temp_dir.mkdir(exist_ok=True)
-        pdf_filename = f"{session_id}_{file.filename}"
-        pdf_path = temp_dir / pdf_filename
-        
-        with open(pdf_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
-        
-        print(f"[Orchestrator] Resume saved: {pdf_path}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-    
-    state["context"]["pdf_path"] = str(pdf_path)
-    
-    try:
-        print(f"[Orchestrator] Running Agent 1 (Perception) for session: {session_id}")
-        updated_state = perception_node(state)
-        SESSIONS[session_id].update(updated_state)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Perception Agent failed: {str(e)}")
-    
-    perception_results = SESSIONS[session_id].get("results", {}).get("perception", {})
-    return {
-        "status": "success",
-        "session_id": session_id,
-        "profile": {
-            "name": perception_results.get("name"),
-            "email": perception_results.get("email"),
-            "skills": SESSIONS[session_id].get("skills", []),
-            "experience_summary": perception_results.get("experience_summary"),
-            "education": perception_results.get("education"),
-            "user_id": SESSIONS[session_id].get("user_id")
-        }
-    }
-
-@app.post("/api/sync-github")
-async def sync_github(request: GithubSyncRequest):
-    """
-    1. Analyzes the GitHub Repo using Agent 1's Watchdog.
-    2. Updates the User Profile in Supabase/Session.
-    3. CRITICAL: Puts NEW skills at the FRONT of the list so Agent 3 prioritizes them.
-    """
-    print(f"🚀 Syncing GitHub for session: {request.session_id}")
-    
-    # 1. Run the Watchdog
-    analysis = fetch_and_analyze_github(request.github_url)
-    
-    if not analysis:
-        print("⚠️ GitHub analysis failed or returned empty.")
-        return {"status": "failed", "message": "Could not analyze repo", "analysis": {}}
-
-    new_skills = [item['skill'] for item in analysis.get('detected_skills', [])]
-    print(f"✅ Watchdog found new skills: {new_skills}")
-
-    # 2. Smart Merge: New Skills First!
-    # We want the search query to look like: "Pandas, Scikit-Learn, Python, ... Spring, Java"
-    # This forces the AI to see the Data Science context first.
-    
-    current_skills = []
-    if request.session_id in SESSIONS:
-        current_skills = SESSIONS[request.session_id].get("skills", [])
-    
-    # Filter out duplicates from OLD list, keep NEW list order intact
-    old_unique_skills = [s for s in current_skills if s not in new_skills]
-    
-    # COMBINE: NEW + OLD
-    final_skills = new_skills + old_unique_skills
-    
-    # Update Session
-    if request.session_id in SESSIONS:
-        SESSIONS[request.session_id]["skills"] = final_skills
-        print(f"🔄 Session skills updated: {len(current_skills)} -> {len(final_skills)} (New skills prioritized)")
-
-    # 3. Update Database (Persistent Storage)
-    client = db_manager.get_client()
-    try:
-        print("🔍 DB: finding most recent profile to update...")
-        response = client.table("profiles").select("*").order("created_at", desc=True).limit(1).execute()
-
-        if response.data:
-            profile = response.data[0]
-            profile_id = profile['id']
-            
-            # DB Merge (Repeat logic to be safe)
-            db_existing_skills = profile.get('skills', []) or []
-            db_old_unique = [s for s in db_existing_skills if s not in new_skills]
-            db_final_skills = new_skills + db_old_unique
-            
-            # Update the DB
-            client.table("profiles").update({
-                "skills": db_final_skills
-            }).eq("id", profile_id).execute()
-            
-            print(f"💾 Updated Profile {profile_id} in DB with {len(db_final_skills)} total skills.")
-            
-            return {
-                "status": "success", 
-                "analysis": analysis,
-                "updated_skills": db_final_skills # Returning ordered list
-            }
-        else:
-             print("⚠️ No profile found in DB.")
-
-    except Exception as e:
-        print(f"❌ DB Update Error (Non-fatal): {e}")
-        # Return success with the session-based skills
-        return {"status": "partial_success", "analysis": analysis, "updated_skills": final_skills}
-
-    return {"status": "success", "analysis": analysis, "updated_skills": final_skills}
-
-# Add this model near the top with others
-class WatchdogCheckRequest(BaseModel):
-    session_id: str
-    last_known_sha: Optional[str] = None # To avoid re-analyzing the same commit
-
-
 # In backend/main.py
 
 @app.post("/api/watchdog/check")
@@ -501,8 +377,8 @@ async def watchdog_check(request: WatchdogCheckRequest):
             
         response = client.table("profiles").select("*").order("created_at", desc=True).limit(1).execute()
         if response.data:
-            profile_id = response.data[0]['id']
-            client.table("profiles").update({"skills": final_skills}).eq("id", profile_id).execute()
+            profile_user_id = response.data[0]['user_id']
+            client.table("profiles").update({"skills": final_skills}).eq("user_id", profile_user_id).execute()
             
     except Exception as e:
         print(f"❌ DB Error: {e}")
