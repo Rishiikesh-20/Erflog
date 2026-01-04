@@ -1,207 +1,207 @@
+# backend/agents/agent_2_market/tools.py
+
 """
-Agent 2: Market Sentinel - Helper Tools for Job Search and Embeddings
-This module provides tools for:
-1. Searching jobs using Tavily API (targeting ATS platforms)
-2. Scraping full job descriptions with trafilatura
-3. Generating embeddings for job descriptions
+Agent 2: Market Sentinel - Helper Tools
+1. JSearch (RapidAPI) -> Instant Jobs
+2. Tavily -> Instant Hackathons & News
+3. LangChain -> Embeddings
 """
 
 import os
-from typing import Any
+import re
+import requests
+from typing import Any, Literal
+from datetime import datetime
 from dotenv import load_dotenv
-from google import genai
-import trafilatura
+
+# --- THIRD PARTY IMPORTS ---
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Gemini client
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY must be set in the environment or a .env file")
+# Validate Critical Keys
+if not os.getenv("GEMINI_API_KEY"):
+    raise RuntimeError("GEMINI_API_KEY must be set in .env")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+# =============================================================================
+# 1. JSEARCH API (RapidAPI) - Primary Job Search (Instant)
+# =============================================================================
 
-
-def get_mock_jobs() -> list[dict[str, Any]]:
-    """
-    Return hardcoded mock job listings for fallback when Tavily fails.
+def search_jsearch_jobs(query: str, num_results: int = 10) -> list[dict[str, Any]]:
+    """Search for jobs using RapidAPI JSearch."""
+    api_key = os.getenv("RAPIDAPI_KEY")
+    if not api_key:
+        print("[Market] RAPIDAPI_KEY not found, skipping JSearch")
+        return []
     
-    Returns:
-        List of realistic job dictionaries
-    """
-    return [
-        {
-            "title": "Senior Python Developer",
-            "company": "TechCorp Solutions",
-            "link": "https://techcorp.example.com/jobs/senior-python-dev",
-            "summary": "We are looking for a Senior Python Developer with 5+ years of experience in Django/FastAPI, cloud services (AWS/GCP), and database management. Experience with LLMs and AI systems is a plus.",
-            "description": "We are looking for a Senior Python Developer with 5+ years of experience in Django/FastAPI, cloud services (AWS/GCP), and database management. Experience with LLMs and AI systems is a plus."
-        },
-        {
-            "title": "AI/ML Engineer",
-            "company": "StartupX AI",
-            "link": "https://startupx.example.com/careers/ai-ml-engineer",
-            "summary": "Join our AI team to build cutting-edge machine learning models. Required: Python, PyTorch/TensorFlow, experience with LangChain, and familiarity with vector databases like Pinecone.",
-            "description": "Join our AI team to build cutting-edge machine learning models. Required: Python, PyTorch/TensorFlow, experience with LangChain, and familiarity with vector databases like Pinecone."
-        },
-        {
-            "title": "Full Stack Software Engineer",
-            "company": "InnovateTech Inc",
-            "link": "https://innovatetech.example.com/jobs/fullstack-engineer",
-            "summary": "Full Stack role requiring expertise in Python backend (FastAPI), React/Next.js frontend, PostgreSQL, and cloud deployment. Experience with REST APIs and microservices architecture preferred.",
-            "description": "Full Stack role requiring expertise in Python backend (FastAPI), React/Next.js frontend, PostgreSQL, and cloud deployment. Experience with REST APIs and microservices architecture preferred."
-        },
-    ]
-
-
-def scrape_job_description(url: str) -> str | None:
-    """
-    Scrape full job description from a URL using trafilatura.
+    url = "https://jsearch.p.rapidapi.com/search"
+    headers = {
+        "X-RapidAPI-Key": api_key,
+        "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
+    }
+    params = {
+        "query": query,
+        "page": "1",
+        "num_pages": "1",
+        "date_posted": "month"
+    }
     
-    Args:
-        url: The job posting URL to scrape
-        
-    Returns:
-        Extracted text content or None if scraping fails
-    """
     try:
-        print(f"[Market] Scraping: {url}")
-        downloaded = trafilatura.fetch_url(url)
+        print(f"[Market] JSearch query: {query}")
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+        response.raise_for_status()
         
-        if not downloaded:
-            print(f"[Market] Failed to fetch: {url}")
-            return None
+        data = response.json()
+        raw_jobs = data.get("data", [])[:num_results]
         
-        text = trafilatura.extract(downloaded)
+        jobs = []
+        for job in raw_jobs:
+            jobs.append({
+                "title": job.get("job_title", "Unknown Title"),
+                "company": job.get("employer_name", "Unknown Company"),
+                "link": job.get("job_apply_link") or job.get("job_google_link", ""),
+                "summary": (job.get("job_description", "")[:500] + "...") if job.get("job_description") else "",
+                "description": job.get("job_description", ""),
+                "location": (job.get("job_city", "") + ", " + job.get("job_country", "")).strip(", "),
+                "posted_at": job.get("job_posted_at_datetime_utc", ""),
+                "type": "job",
+                "source": "JSearch",
+                "platform": job.get("job_publisher", "JSearch")
+            })
         
-        if text and len(text.strip()) > 100:
-            print(f"[Market] Scraped {len(text)} chars from {url}")
-            return text.strip()
-        else:
-            print(f"[Market] Insufficient content from: {url}")
-            return None
-            
+        print(f"[Market] JSearch found {len(jobs)} jobs")
+        return jobs
+        
     except Exception as e:
-        print(f"[Market] Scraping error for {url}: {str(e)}")
-        return None
+        print(f"[Market] JSearch error: {str(e)}")
+        return []
 
+# =============================================================================
+# 2. TAVILY API - Hackathons & News (Instant)
+# =============================================================================
 
-def search_jobs(query: str) -> list[dict[str, Any]]:
-    """
-    Search for jobs using Tavily API targeting ATS platforms,
-    then scrape full descriptions with trafilatura.
-    
-    Args:
-        query: Search query (e.g., "Python Developer")
-        
-    Returns:
-        List of job dictionaries with full descriptions
-    """
+def search_tavily(
+    query: str, 
+    search_type: Literal["job", "hackathon", "news"] = "job",
+    max_results: int = 5
+) -> list[dict[str, Any]]:
+    """Search using Tavily API for jobs, hackathons, or news."""
     try:
         from tavily import TavilyClient
         
         api_key = os.getenv("TAVILY_API_KEY")
         if not api_key:
-            print("[Market] TAVILY_API_KEY not found, using mock data")
-            return get_mock_jobs()
+            print("[Market] TAVILY_API_KEY not found")
+            return []
         
         client = TavilyClient(api_key=api_key)
         
-        # Target ATS platforms that are easy to scrape
-        search_query = f"{query} (site:greenhouse.io OR site:lever.co OR site:ashbyhq.com)"
-        print(f"[Market] Searching: {search_query}")
+        # Build specific queries
+        if search_type == "hackathon":
+            search_query = f"{query} site:devpost.com OR site:devfolio.co OR site:gitcoin.co"
+        elif search_type == "news":
+            search_query = query
+        else:
+            search_query = f"{query} (site:greenhouse.io OR site:lever.co)"
         
-        results = client.search(search_query, max_results=5)
+        # Configure search options
+        search_kwargs = {"max_results": max_results}
+        if search_type == "news":
+            search_kwargs["search_depth"] = "advanced"
+            search_kwargs["days"] = 3
         
-        # Transform results and scrape descriptions (top 3 only)
-        jobs = []
+        results = client.search(search_query, **search_kwargs)
         tavily_results = results.get("results", [])
         
-        for i, result in enumerate(tavily_results):
+        items = []
+        for result in tavily_results:
             url = result.get("url", "")
             content = result.get("content", "")
+            title = result.get("title", "")
             
-            job = {
-                "title": result.get("title", "Job Opening"),
-                "company": extract_company_from_url(url),
-                "link": url,
-                "summary": content,  # Keep Tavily snippet for DB/preview
-            }
-            
-            # Scrape full description for top 3 results only
-            if i < 3 and url:
-                scraped_description = scrape_job_description(url)
-                
-                # Use scraped content if available, otherwise fallback to Tavily snippet
-                if scraped_description:
-                    job["description"] = scraped_description
-                else:
-                    job["description"] = content  # Fallback to Tavily snippet
+            if search_type == "hackathon":
+                bounty = extract_bounty_from_text(content)
+                items.append({
+                    "title": title,
+                    "company": extract_platform_from_url(url),
+                    "link": url,
+                    "summary": content,
+                    "description": content,
+                    "type": "hackathon",
+                    "source": "Tavily",
+                    "platform": extract_platform_from_url(url),
+                    "bounty_amount": bounty
+                })
+            elif search_type == "news":
+                items.append({
+                    "title": title,
+                    "link": url,
+                    "summary": content,
+                    "description": content,
+                    "source": extract_company_from_url(url),
+                    "published_at": result.get("published_date", datetime.now().isoformat()),
+                    "type": "news"
+                })
             else:
-                job["description"] = content  # Fallback for results beyond top 3
-            
-            jobs.append(job)
+                items.append({
+                    "title": title,
+                    "company": extract_company_from_url(url),
+                    "link": url,
+                    "summary": content,
+                    "description": content,
+                    "type": "job",
+                    "source": "Tavily",
+                    "platform": extract_platform_from_url(url)
+                })
         
-        if not jobs:
-            print("[Market] No results from Tavily, using mock data")
-            return get_mock_jobs()
+        return items
         
-        print(f"[Market] Found {len(jobs)} jobs")
-        return jobs
-    
     except Exception as e:
-        print(f"[Market] Error: {str(e)}")
-        return get_mock_jobs()
+        print(f"[Market] Tavily error: {str(e)}")
+        return []
 
+# =============================================================================
+# 3. EMBEDDINGS & HELPERS
+# =============================================================================
+
+def generate_embedding(text: str) -> list[float]:
+    """Generate embeddings using LangChain (Google GenAI)."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    try:
+        embeddings_model = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004", 
+            google_api_key=api_key
+        )
+        return embeddings_model.embed_query(text)
+    except Exception as e:
+        raise Exception(f"Error generating embedding: {str(e)}")
+
+def extract_bounty_from_text(text: str) -> float | None:
+    patterns = [r'\$[\d,]+(?:k|K)?', r'[\d,]+\s*(?:USD|dollars?)', r'prize[:\s]+\$?[\d,]+']
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                amount_str = re.sub(r'[^\d.]', '', match.group())
+                if 'k' in match.group().lower(): return float(amount_str) * 1000
+                return float(amount_str) if amount_str else None
+            except ValueError: continue
+    return None
+
+def extract_platform_from_url(url: str) -> str:
+    try:
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.lower()
+        if "devpost" in domain: return "Devpost"
+        if "devfolio" in domain: return "Devfolio"
+        if "gitcoin" in domain: return "Gitcoin"
+        return domain.replace("www.", "").split(".")[0].title()
+    except Exception: return "Unknown"
 
 def extract_company_from_url(url: str) -> str:
-    """
-    Extract a company name from a URL.
-    
-    Args:
-        url: The URL string
-        
-    Returns:
-        Extracted company name or "Unknown Company"
-    """
     try:
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
-        # Remove www. and common TLDs
-        company = domain.replace("www.", "").split(".")[0]
-        return company.title() if company else "Unknown Company"
-    except Exception:
-        return "Unknown Company"
-
-
-def generate_embedding(text: str) -> list[float]:
-    """
-    Generate embeddings for text using Google's embedding model.
-    
-    Args:
-        text: Text to generate embedding for (e.g., job description)
-        
-    Returns:
-        List of floats representing the embedding vector
-        
-    Raises:
-        Exception: If embedding generation fails
-    """
-    try:
-        # Use the official embedding model (768 dimensions)
-        response = client.models.embed_content(
-            model="text-embedding-004",
-            contents=text,
-        )
-        
-        # The embedding is in embeddings[0].values
-        embedding = response.embeddings[0].values
-        
-        if not isinstance(embedding, list):
-            raise ValueError("Embedding is not a list")
-        
-        return embedding
-    
-    except Exception as e:
-        raise Exception(f"Error generating embedding: {str(e)}")
+        return domain.replace("www.", "").split(".")[0].title()
+    except Exception: return "Unknown Company"
