@@ -46,6 +46,12 @@ def fetch_user_recent_activity(github_username: str, max_events: int = 10) -> Op
             - repos_touched: List of repositories with activity
         Or None if no activity found
     """
+    # === LIMITS TO PREVENT EXCESSIVE LLM COSTS ===
+    MAX_CONTEXT_CHARS = 15000    # Max total context size (~15KB, ~4000 tokens)
+    MAX_COMMITS_PER_REPO = 3      # Only analyze 3 most recent commits per repo
+    MAX_FILES_PER_COMMIT = 5      # Only analyze 5 files per commit
+    MAX_PATCH_SIZE = 1500         # Max chars per file patch
+    
     token = os.getenv("GITHUB_ACCESS_TOKEN")
     if not token:
         print("⚠️ GITHUB_ACCESS_TOKEN missing - cannot fetch user activity")
@@ -62,9 +68,15 @@ def fetch_user_recent_activity(github_username: str, max_events: int = 10) -> Op
         repos_touched = set()
         latest_commit_sha = None
         events_processed = 0
+        current_context_size = 0
         
         for event in events:
             if events_processed >= max_events:
+                break
+            
+            # Check if we've hit the context limit
+            if current_context_size >= MAX_CONTEXT_CHARS:
+                print(f"📊 Context limit reached ({current_context_size} chars), stopping collection")
                 break
                 
             # Only process PushEvents (commits)
@@ -78,7 +90,69 @@ def fetch_user_recent_activity(github_username: str, max_events: int = 10) -> Op
             payload = event.payload
             commits = payload.get("commits", [])
             
+            # FALLBACK: If commits array is empty (common for web UI edits, merges, squashes),
+            # fetch recent commits directly from the repository
+            if not commits:
+                print(f"📦 PushEvent has empty commits payload, fetching from repo: {repo_name}")
+                try:
+                    repo = g.get_repo(repo_name)
+                    # Get limited recent commits from this repo
+                    recent_commits = list(repo.get_commits()[:MAX_COMMITS_PER_REPO])
+                    
+                    for commit in recent_commits:
+                        if current_context_size >= MAX_CONTEXT_CHARS:
+                            break
+                            
+                        commit_sha = commit.sha
+                        commit_message = commit.commit.message or ""
+                        
+                        # Track latest SHA for caching
+                        if latest_commit_sha is None:
+                            latest_commit_sha = commit_sha
+                        
+                        files_processed = 0
+                        for file in commit.files:
+                            if files_processed >= MAX_FILES_PER_COMMIT:
+                                break
+                            if current_context_size >= MAX_CONTEXT_CHARS:
+                                break
+                                
+                            # Filter by code file extensions
+                            if not file.filename.endswith(CODE_EXTENSIONS):
+                                continue
+                                
+                            # Get the patch (diff)
+                            if file.patch:
+                                patch_text = (
+                                    f"--- REPO: {repo_name} | FILE: {file.filename} ---\n"
+                                    f"Commit: {commit_message[:100]}\n"
+                                    f"Patch:\n{file.patch[:MAX_PATCH_SIZE]}"
+                                )
+                                context_parts.append(patch_text)
+                                current_context_size += len(patch_text)
+                                files_processed += 1
+                            elif file.filename.endswith(".ipynb"):
+                                nb_text = (
+                                    f"--- REPO: {repo_name} | FILE: {file.filename} ---\n"
+                                    f"Jupyter Notebook updated in commit: {commit_message[:100]}"
+                                )
+                                context_parts.append(nb_text)
+                                current_context_size += len(nb_text)
+                                files_processed += 1
+                                
+                except Exception as e:
+                    print(f"⚠️ Could not fetch repo commits for {repo_name}: {e}")
+                continue  # Move to next event after processing fallback
+            
+            # Normal flow: process commits from payload
+            commits_processed = 0
             for commit_data in commits:
+                if commits_processed >= MAX_COMMITS_PER_REPO:
+                    break
+                if current_context_size >= MAX_CONTEXT_CHARS:
+                    break
+                    
+                commits_processed += 1
                 commit_sha = commit_data.get("sha")
                 commit_message = commit_data.get("message", "")
                 
@@ -91,23 +165,35 @@ def fetch_user_recent_activity(github_username: str, max_events: int = 10) -> Op
                     repo = g.get_repo(repo_name)
                     full_commit = repo.get_commit(commit_sha)
                     
+                    files_processed = 0
                     for file in full_commit.files:
+                        if files_processed >= MAX_FILES_PER_COMMIT:
+                            break
+                        if current_context_size >= MAX_CONTEXT_CHARS:
+                            break
+                            
                         # Filter by code file extensions
                         if not file.filename.endswith(CODE_EXTENSIONS):
                             continue
                             
                         # Get the patch (diff)
                         if file.patch:
-                            context_parts.append(
+                            patch_text = (
                                 f"--- REPO: {repo_name} | FILE: {file.filename} ---\n"
                                 f"Commit: {commit_message[:100]}\n"
-                                f"Patch:\n{file.patch[:2000]}"  # Limit patch size
+                                f"Patch:\n{file.patch[:MAX_PATCH_SIZE]}"
                             )
+                            context_parts.append(patch_text)
+                            current_context_size += len(patch_text)
+                            files_processed += 1
                         elif file.filename.endswith(".ipynb"):
-                            context_parts.append(
+                            nb_text = (
                                 f"--- REPO: {repo_name} | FILE: {file.filename} ---\n"
                                 f"Jupyter Notebook updated in commit: {commit_message[:100]}"
                             )
+                            context_parts.append(nb_text)
+                            current_context_size += len(nb_text)
+                            files_processed += 1
                             
                 except Exception as e:
                     # Some commits might be in private repos or deleted
@@ -152,12 +238,24 @@ def get_latest_commit_sha(github_username: str) -> Optional[str]:
                 commits = event.payload.get("commits", [])
                 if commits:
                     return commits[0].get("sha")
+                
+                # FALLBACK: If commits array is empty, fetch latest from repo
+                repo_name = event.repo.name
+                try:
+                    repo = g.get_repo(repo_name)
+                    latest_commit = list(repo.get_commits()[:1])
+                    if latest_commit:
+                        return latest_commit[0].sha
+                except Exception as e:
+                    print(f"⚠️ Could not fetch latest SHA from {repo_name}: {e}")
+                    continue
         
         return None
         
     except Exception as e:
         print(f"❌ GitHub SHA Check Error: {e}")
         return None
+
 
 
 def analyze_code_context(code_context: str) -> Optional[Dict[str, Any]]:
@@ -170,56 +268,83 @@ def analyze_code_context(code_context: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dict with detected_skills list, each containing skill, level, evidence
     """
+    import json
+    import re
+    
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         print("⚠️ GEMINI_API_KEY missing")
         return None
     
-    # 1. Setup LLM
+    # 1. Setup LLM with stricter settings
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        temperature=0.2,
+        model="gemini-2.0-flash",
+        temperature=0.1,  # Lower temperature for more deterministic JSON output
         google_api_key=api_key
     )
     
-    # 2. Setup Parser
-    parser = JsonOutputParser()
-    
-    # 3. Setup Prompt
-    prompt = PromptTemplate(
-        template="""
-        You are a Technical Skill Auditor analyzing a developer's recent GitHub activity.
-        
-        Based on the code patches below (from their recent commits), identify:
-        1. Programming languages actively used
-        2. Frameworks and libraries (React, FastAPI, TensorFlow, etc.)
-        3. Development tools and practices (Docker, CI/CD, Testing, etc.)
-        4. Domain expertise (ML, Web Dev, Systems, etc.)
-        
-        CODE CONTEXT FROM RECENT COMMITS:
-        {code_context}
-        
-        {format_instructions}
-        
-        Return a JSON object with key "detected_skills" containing a list of objects.
-        Each object should have:
-        - "skill": The technology/skill name (e.g., "Python", "React", "Docker")
-        - "level": One of "beginner", "intermediate", "advanced" based on code complexity
-        - "evidence": Brief description of what code patterns showed this skill
-        
-        Focus on concrete skills visible in the code, not assumptions.
-        """,
-        input_variables=["code_context"],
-        partial_variables={"format_instructions": parser.get_format_instructions()},
-    )
-    
-    # 4. Run Chain
-    chain = prompt | llm | parser
-    
+    # 2. Strict prompt that ONLY returns JSON
+    strict_prompt = """Analyze the code patches below and extract technical skills.
+
+CODE PATCHES:
+{code_context}
+
+RESPOND WITH ONLY A JSON OBJECT. NO MARKDOWN. NO EXPLANATION. NO TEXT BEFORE OR AFTER.
+
+Required JSON format:
+{{"detected_skills": [
+  {{"skill": "Python", "level": "advanced", "evidence": "FastAPI async patterns"}},
+  {{"skill": "React", "level": "intermediate", "evidence": "Component hooks usage"}}
+]}}
+
+Rules:
+- Return ONLY valid JSON, nothing else
+- "skill": Technology name (Python, React, Docker, etc.)
+- "level": One of "beginner", "intermediate", "advanced"
+- "evidence": Brief 5-10 word description
+- Maximum 10 skills
+- Focus on concrete technologies visible in code"""
+
     try:
         print("[LangChain] Analyzing GitHub Activity Code Context...")
-        result = chain.invoke({"code_context": code_context[:15000]})  # Limit context size
-        return result
+        
+        # Direct LLM call without parser (more control)
+        response = llm.invoke(strict_prompt.format(code_context=code_context[:12000]))
+        raw_text = response.content.strip()
+        
+        # Try to parse as JSON directly
+        try:
+            result = json.loads(raw_text)
+            if "detected_skills" in result:
+                print(f"[LangChain] ✓ Detected {len(result['detected_skills'])} skills")
+                return result
+        except json.JSONDecodeError:
+            pass
+        
+        # Fallback: Extract JSON from markdown code blocks if present
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
+        if json_match:
+            try:
+                result = json.loads(json_match.group(1))
+                if "detected_skills" in result:
+                    print(f"[LangChain] ✓ Extracted {len(result['detected_skills'])} skills from markdown")
+                    return result
+            except json.JSONDecodeError:
+                pass
+        
+        # Final fallback: Find any JSON object in response
+        json_match = re.search(r'\{[^{}]*"detected_skills"\s*:\s*\[.*?\]\s*\}', raw_text, re.DOTALL)
+        if json_match:
+            try:
+                result = json.loads(json_match.group())
+                print(f"[LangChain] ✓ Recovered {len(result.get('detected_skills', []))} skills")
+                return result
+            except json.JSONDecodeError:
+                pass
+        
+        print(f"[LangChain] ⚠️ Could not parse JSON from response (length: {len(raw_text)})")
+        return None
+        
     except Exception as e:
         print(f"[LangChain] Analysis Error: {e}")
         return None
