@@ -22,3 +22,5 @@ pdfminer.six
 spacy
 reportlab
 # en_core_web_sm - Install separately with: python -m spacy download en_core_web_sm
+browser-use
+playwright

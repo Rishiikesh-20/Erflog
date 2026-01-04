@@ -24,7 +24,7 @@ from core.state import AgentState
 from core.db import db_manager  # Database connection
 
 # Import routers
-from agents.agent_4_operative import agent4_router
+from agents.agent_4_operative import agent4_router, operative_router
 
 # Import Agent Nodes/Functions
 from agents.agent_1_perception.graph import perception_node, app as perception_agent
@@ -50,6 +50,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(agent4_router)
+app.include_router(operative_router)
 
 # -----------------------------------------------------------------------------
 # Global Session Store
