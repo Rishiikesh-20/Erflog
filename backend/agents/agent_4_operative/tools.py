@@ -73,8 +73,8 @@ async def calculate_ats_score(resume_text: str) -> dict:
 # 2. AUTO-APPLY AGENT
 # =============================================================================
 
-async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job_id: str = None) -> dict:
-    """Launches browser agent to auto-fill forms."""
+async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job_id: str = None, resume_path: str = None) -> dict:
+    """Launches browser agent to auto-fill forms and optionally upload resume."""
     if not BROWSER_USE_AVAILABLE:
         return {
             "success": False, 
@@ -84,6 +84,8 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
         }
 
     print(f"🤖 [Agent 4] Starting Auto-Apply for: {job_url}")
+    if resume_path:
+        print(f"📄 [Agent 4] Resume file: {resume_path}")
     browser = None
     status = "pending"
     reason = "Initializing..."
@@ -101,14 +103,32 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
         clean_data = {k: v for k, v in user_data.items() if v}
         user_data_str = "\n".join([f"- {key}: {value}" for key, value in clean_data.items()])
         
+        # Build resume upload instruction if resume_path is provided
+        resume_instruction = ""
+        if resume_path and os.path.exists(resume_path):
+            resume_instruction = f"""
+        5. RESUME UPLOAD: For the resume/CV upload field, use the upload_file action with the file path: {resume_path}
+           - Find the file input element (usually hidden behind 'Upload Resume', 'Attach Resume', 'Choose File' button)
+           - Use action: {{"upload_file": {{"index": <element_index>, "file": "{resume_path}"}}}}
+           - Do NOT try to type the file path - use the upload_file action only
+        """
+        elif resume_path:
+            print(f"   ⚠️ Resume file not found at: {resume_path}")
+        
         task = f"""
         GOAL: Apply to job at {job_url}
         USER DATA: {user_data_str}
         INSTRUCTIONS:
         1. Click 'Apply'. 
-        2. Fill fields. 
-        3. DO NOT SUBMIT. Stop before final button.
-        4. Report filled fields.
+        2. Fill all form fields with the user data provided above.
+        3. For dropdown/select fields, choose the most appropriate option.
+        4. For required fields not in user data, use 'NA' or skip if possible.
+        {resume_instruction}
+        6. DO NOT SUBMIT. Stop before clicking the final submit button.
+        7. Report all fields you filled and any issues encountered.
+        
+        IMPORTANT: For file uploads, you MUST use the upload_file action, not input_text or click_element.
+        Example: {{"upload_file": {{"index": 11, "file": "/path/to/file.pdf"}}}}
         """
         
         agent = Agent(task=task, llm=llm, browser=browser)

@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from datetime import datetime
+import httpx
+import tempfile
 
 from .schemas import (
     GenerateResumeRequest,
@@ -202,13 +204,48 @@ async def auto_apply_endpoint(request: AutoApplyRequest):
     - Opens the job URL in a visible browser
     - Clicks the Apply button
     - Fills form fields with provided user data
-    - Does NOT upload files or submit the form
+    - Uploads resume from Supabase (user_id), local path, or URL
+    - Does NOT submit the form
     - User should review and submit manually
     """
     try:
+        from .tools import download_file
+        
+        # Handle resume: priority is user_id > resume_path > resume_url
+        resume_file_path = None
+        
+        if request.user_id:
+            # Fetch resume from Supabase storage using user_id
+            try:
+                resume_file_path = download_file(request.user_id, f"{request.user_id}.pdf")
+                print(f"📄 Downloaded resume from Supabase: {resume_file_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to download resume from Supabase: {e}")
+        
+        if not resume_file_path and request.resume_path:
+            resume_file_path = request.resume_path
+        
+        if not resume_file_path and request.resume_url:
+            # Download resume from URL to temp file
+            async with httpx.AsyncClient() as client:
+                response = await client.get(request.resume_url)
+                if response.status_code == 200:
+                    ext = ".pdf"
+                    if ".docx" in request.resume_url.lower():
+                        ext = ".docx"
+                    elif ".doc" in request.resume_url.lower():
+                        ext = ".doc"
+                    
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    resume_file_path = temp_file.name
+        
         result = await run_auto_apply(
             job_url=request.job_url,
-            user_data=request.user_data
+            user_data=request.user_data,
+            user_id=request.user_id,
+            resume_path=resume_file_path
         )
         return AutoApplyResponse(**result)
     except Exception as e:
@@ -252,9 +289,40 @@ async def operative_auto_apply(request: AutoApplyRequest):
     Alternative endpoint with /api/operative prefix.
     """
     try:
+        from .tools import download_file
+        
+        # Handle resume: priority is user_id > resume_path > resume_url
+        resume_file_path = None
+        
+        if request.user_id:
+            try:
+                resume_file_path = download_file(request.user_id, f"{request.user_id}.pdf")
+            except Exception as e:
+                print(f"⚠️ Failed to download resume from Supabase: {e}")
+        
+        if not resume_file_path and request.resume_path:
+            resume_file_path = request.resume_path
+        
+        if not resume_file_path and request.resume_url:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(request.resume_url)
+                if response.status_code == 200:
+                    ext = ".pdf"
+                    if ".docx" in request.resume_url.lower():
+                        ext = ".docx"
+                    elif ".doc" in request.resume_url.lower():
+                        ext = ".doc"
+                    
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    resume_file_path = temp_file.name
+        
         result = await run_auto_apply(
             job_url=request.job_url,
-            user_data=request.user_data
+            user_data=request.user_data,
+            user_id=request.user_id,
+            resume_path=resume_file_path
         )
         return AutoApplyResponse(**result)
     except Exception as e:

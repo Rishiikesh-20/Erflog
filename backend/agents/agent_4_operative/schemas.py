@@ -120,6 +120,9 @@ class AutoApplyRequest(BaseModel):
     """Request to auto-fill a job application form."""
     job_url: str = Field(..., description="URL of the job application page")
     user_data: dict = Field(..., description="User information for form filling (name, email, phone, etc.)")
+    user_id: Optional[str] = Field(None, description="User ID to fetch resume from Supabase storage (stored as {user_id}.pdf)")
+    resume_path: Optional[str] = Field(None, description="Local file path to resume PDF/DOCX to upload")
+    resume_url: Optional[str] = Field(None, description="URL to download resume from (e.g., Supabase storage URL)")
 
 
 class AutoApplyResponse(BaseModel):
