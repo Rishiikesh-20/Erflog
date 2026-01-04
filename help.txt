@@ -1,0 +1,11 @@
+# CLI execution (recommended for cron)
+cd backend
+python -m agents.agent_2_market.cron
+
+# API endpoint (protected by CRON_SECRET)
+curl -X POST http://localhost:8000/api/market/cron \
+  -H "X-Cron-Secret: your-secret"
+
+# Python import
+from agents.agent_2_market.cron import run_daily_market_scan
+result = run_daily_market_scan()
