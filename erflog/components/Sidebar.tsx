@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import {
   Home,
   Target,
@@ -12,10 +13,13 @@ import {
   Mic,
   MessageSquare,
   Trophy,
+  User,
 } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { userMetadata, isAuthenticated } = useAuth();
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -172,13 +176,32 @@ export default function Sidebar() {
         style={{ borderColor: "#E5E0D8" }}
       >
         <div className="flex items-center gap-3">
-          <div
-            className="h-10 w-10 rounded-full"
-            style={{ backgroundColor: "#E5E0D8" }}
-          />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-ink">User</p>
-            <p className="text-xs text-secondary">Active</p>
+          {userMetadata.avatarUrl ? (
+            <Image
+              src={userMetadata.avatarUrl}
+              alt={userMetadata.fullName || "User"}
+              width={40}
+              height={40}
+              className="rounded-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div
+              className="h-10 w-10 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "#E5E0D8" }}
+            >
+              <User size={20} className="text-gray-500" />
+            </div>
+          )}
+          <div className="flex-1 overflow-hidden">
+            <p className="text-sm font-medium text-ink truncate">
+              {userMetadata.fullName || "User"}
+            </p>
+            <p className="text-xs text-secondary truncate">
+              {isAuthenticated
+                ? userMetadata.email || "Active"
+                : "Not signed in"}
+            </p>
           </div>
         </div>
       </div>
