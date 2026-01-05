@@ -535,6 +535,13 @@ def download_original_pdf(user_id: str) -> str:
         raise Exception(f"Download failed: {e}")
 
 def upload_mutated_pdf(file_path: str, user_id: str) -> str:
+    """
+    Uploads tailored/mutated PDF to Supabase Storage.
+    
+    - Deletes previous secondary resume from S3 if exists
+    - Uploads new tailored resume
+    - Updates sec_resume_url in profiles table
+    """
     supabase_url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
     supabase = create_client(supabase_url.rstrip('/'), key)
@@ -548,13 +555,32 @@ def upload_mutated_pdf(file_path: str, user_id: str) -> str:
     
     try:
         with open(file_path, "rb") as f: data = f.read()
-        try: supabase.storage.from_("Resume").remove([file_name])
-        except: pass
         
+        # Delete previous secondary resume from storage
+        try:
+            # Try to remove both PDF and DOCX variants
+            supabase.storage.from_("Resume").remove([f"{user_id}_mutated.pdf"])
+            supabase.storage.from_("Resume").remove([f"{user_id}_mutated.docx"])
+            print(f"   🗑️ Deleted old secondary resume from S3")
+        except: 
+            pass  # File may not exist, that's ok
+        
+        # Upload new secondary resume
         print(f"📤 Uploading {ext.upper()}: {file_name}")
         supabase.storage.from_("Resume").upload(file_name, data, {"content-type": content_type})
         res = supabase.storage.from_("Resume").create_signed_url(file_name, 31536000)
-        return res.get("signedURL") if isinstance(res, dict) else str(res)
+        signed_url = res.get("signedURL") if isinstance(res, dict) else str(res)
+        
+        # Update sec_resume_url in profiles table
+        try:
+            supabase.table("profiles").update({
+                "sec_resume_url": signed_url
+            }).eq("user_id", user_id).execute()
+            print(f"   ✅ Updated sec_resume_url in profiles")
+        except Exception as db_err:
+            print(f"   ⚠️ Failed to update sec_resume_url (column may not exist): {db_err}")
+        
+        return signed_url
     except Exception as e:
         raise Exception(f"Upload failed: {e}")
 # =============================================================================
