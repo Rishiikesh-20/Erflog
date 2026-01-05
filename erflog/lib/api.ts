@@ -190,8 +190,31 @@ export interface ResumeUploadResponse {
 }
 
 // ============================================================================
+// GitHub Sync Response
+// ============================================================================
+
+export interface SyncGithubResponse {
+  status: string;
+  insights?: {
+    message?: string;
+    repos_active?: string[];
+    main_focus?: string;
+    tech_stack?: string[];
+  };
+  new_skills?: string[];
+  updated_skills?: string[];
+  from_cache?: boolean;
+  latest_sha?: string;
+  repos_touched?: string[];
+  analysis?: {
+    detected_skills?: Array<{ skill: string; confidence: number }>;
+  };
+}
+
+// ============================================================================
 // Type Definitions
 // ============================================================================
+
 
 export interface ApiInfo {
   message: string;
@@ -233,13 +256,7 @@ export interface UploadResumeResponse {
   profile: UserProfile;
 }
 
-export interface SyncGithubResponse {
-  status: string;
-  analysis: {
-    detected_skills: Array<{ skill: string; level: string; evidence: string }>;
-  };
-  updated_skills: string[];
-}
+// SyncGithubResponse is defined above in GitHub Sync Response section
 
 export interface WatchdogCheckResponse {
   status: "updated" | "no_change" | "error";
@@ -640,13 +657,27 @@ export async function generateOnboardingQuiz(
  */
 export async function submitOnboardingQuiz(
   answers: QuizAnswer[]
-): Promise<QuizSubmitResponse> {
-  const response = await api.post<QuizSubmitResponse>(
+): Promise<QuizSubmitResponse & { trigger_cold_start?: boolean }> {
+  const response = await api.post<QuizSubmitResponse & { trigger_cold_start?: boolean }>(
     "/api/perception/onboarding/quiz/submit",
     {
       answers,
     }
   );
+  return response.data;
+}
+
+/**
+ * Trigger cold start processing for a newly onboarded user.
+ * This immediately generates personalized data (jobs, hackathons, news, roadmaps)
+ * instead of waiting for the 2AM cron job.
+ */
+export async function triggerColdStart(): Promise<{
+  status: string;
+  message: string;
+  user_id: string;
+}> {
+  const response = await api.post("/api/strategist/cold-start");
   return response.data;
 }
 
@@ -845,6 +876,83 @@ export async function refreshTodayData(): Promise<{
   stats: { jobs_count: number; hackathons_count: number; news_count: number };
 }> {
   const response = await api.post("/api/strategist/refresh");
+  return response.data;
+}
+
+// ============================================================================
+// Settings API Functions
+// ============================================================================
+
+export interface SettingsProfile {
+  user_id: string;
+  name: string | null;
+  email: string | null;
+  github_url: string | null;
+  linkedin_url: string | null;
+  resume_url: string | null;
+  sec_resume_url: string | null;
+  skills: string[];
+  target_roles: string[];
+  onboarding_completed: boolean;
+  quiz_completed: boolean;
+  updated_at: string | null;
+}
+
+export interface SettingsProfileResponse {
+  status: string;
+  profile: SettingsProfile;
+}
+
+export interface ProfileUpdateRequest {
+  name?: string;
+  github_url?: string;
+  linkedin_url?: string;
+}
+
+export interface ProfileUpdateResponse {
+  status: string;
+  updated_fields: string[];
+  user_id: string;
+  message: string;
+}
+
+/**
+ * Get full profile for Settings page
+ */
+export async function getSettingsProfile(): Promise<SettingsProfileResponse> {
+  const response = await api.get<SettingsProfileResponse>(
+    "/api/perception/settings/profile"
+  );
+  return response.data;
+}
+
+/**
+ * Update profile fields (name, github_url, linkedin_url)
+ */
+export async function updateProfile(
+  data: ProfileUpdateRequest
+): Promise<ProfileUpdateResponse> {
+  const response = await api.patch<ProfileUpdateResponse>(
+    "/api/perception/settings/profile",
+    data
+  );
+  return response.data;
+}
+
+/**
+ * Upload new primary resume (replaces existing)
+ */
+export async function updatePrimaryResume(file: File): Promise<{
+  status: string;
+  message: string;
+  resume_url: string;
+}> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await api.put("/api/perception/settings/resume", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return response.data;
 }
 
