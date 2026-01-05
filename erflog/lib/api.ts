@@ -848,4 +848,136 @@ export async function refreshTodayData(): Promise<{
   return response.data;
 }
 
+// =============================================================================
+// Saved Jobs API
+// =============================================================================
+
+export interface SavedJob {
+  id: string;
+  user_id: string;
+  original_job_id: string;
+  title: string;
+  company: string;
+  description?: string;
+  link?: string;
+  score?: number;
+  roadmap_details?: {
+    missing_skills?: string[];
+    [key: string]: unknown;
+  };
+  created_at: string;
+}
+
+export interface SaveJobRequest {
+  user_id: string;
+  original_job_id: string;
+  title: string;
+  company: string;
+  description?: string;
+  link?: string;
+  score?: number;
+  roadmap_details?: object;
+}
+
+export interface GlobalRoadmap {
+  id: string;
+  name: string;
+  merged_graph: {
+    title?: string;
+    description?: string;
+    total_estimated_weeks?: number;
+    skill_categories?: Array<{
+      category: string;
+      skills: Array<{
+        name: string;
+        priority: string;
+        appears_in_jobs?: string[];
+        estimated_weeks?: number;
+        resources?: string[];
+      }>;
+    }>;
+    learning_path?: Array<{
+      phase: number;
+      title: string;
+      duration_weeks: number;
+      skills: string[];
+      milestone: string;
+    }>;
+    combined_missing_skills?: string[];
+    source_jobs?: Array<{
+      title: string;
+      company: string;
+    }>;
+  };
+  source_job_ids: string[];
+  created_at: string;
+}
+
+/**
+ * Save a job to user's saved jobs list
+ */
+export async function saveJob(job: SaveJobRequest): Promise<SavedJob> {
+  const response = await api.post<SavedJob>("/api/saved-jobs/save", job);
+  return response.data;
+}
+
+/**
+ * Get all saved jobs for a user
+ */
+export async function getSavedJobs(userId: string): Promise<SavedJob[]> {
+  const response = await api.get<SavedJob[]>(`/api/saved-jobs/list/${userId}`);
+  return response.data;
+}
+
+/**
+ * Remove a job from saved jobs
+ */
+export async function removeSavedJob(jobId: string): Promise<{ status: string; message: string }> {
+  const response = await api.delete(`/api/saved-jobs/remove/${jobId}`);
+  return response.data;
+}
+
+/**
+ * Check if a job is already saved
+ */
+export async function checkJobSaved(userId: string, originalJobId: string): Promise<{ is_saved: boolean; saved_job_id: string | null }> {
+  const response = await api.get(`/api/saved-jobs/check/${userId}/${originalJobId}`);
+  return response.data;
+}
+
+/**
+ * Merge roadmaps from multiple saved jobs
+ */
+export async function mergeRoadmaps(jobIds: string[], name?: string): Promise<GlobalRoadmap> {
+  const response = await api.post<GlobalRoadmap>("/api/saved-jobs/merge-roadmaps", {
+    job_ids: jobIds,
+    name: name || "My Master Plan"
+  });
+  return response.data;
+}
+
+/**
+ * Get all global (merged) roadmaps for a user
+ */
+export async function getGlobalRoadmaps(userId: string): Promise<GlobalRoadmap[]> {
+  const response = await api.get<GlobalRoadmap[]>(`/api/saved-jobs/global-roadmaps/${userId}`);
+  return response.data;
+}
+
+/**
+ * Get a specific global roadmap
+ */
+export async function getGlobalRoadmap(roadmapId: string): Promise<GlobalRoadmap> {
+  const response = await api.get<GlobalRoadmap>(`/api/saved-jobs/global-roadmap/${roadmapId}`);
+  return response.data;
+}
+
+/**
+ * Delete a global roadmap
+ */
+export async function deleteGlobalRoadmap(roadmapId: string): Promise<{ status: string; message: string }> {
+  const response = await api.delete(`/api/saved-jobs/global-roadmap/${roadmapId}`);
+  return response.data;
+}
+
 export default api;

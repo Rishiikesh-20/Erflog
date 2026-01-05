@@ -11,6 +11,7 @@ import type {
   SkillInsight,
   GitHubInsight,
   NewsCard,
+  SavedJob,
 } from "@/lib/api";
 import {
   Bot,
@@ -255,6 +256,9 @@ export default function Dashboard() {
   const [apiComplete, setApiComplete] = useState(false);
   const hasRunStrategyRef = useRef(false);
 
+  // Saved Jobs State
+  const [savedJobIds, setSavedJobIds] = useState<Set<string>>(new Set());
+
   // GitHub Sync State (Single button, no auto-polling)
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{
@@ -458,6 +462,73 @@ export default function Dashboard() {
       setIsSyncing(false);
     }
   }, [sessionId, isSyncing]);
+
+  // 5. Fetch Saved Jobs on mount
+  useEffect(() => {
+    const fetchSavedJobs = async () => {
+      if (!user?.id) return;
+      try {
+        const savedJobs = await api.getSavedJobs(user.id);
+        const ids = new Set(savedJobs.map((j: SavedJob) => j.original_job_id));
+        setSavedJobIds(ids);
+      } catch (err) {
+        console.error("Failed to fetch saved jobs:", err);
+      }
+    };
+    if (isAuthenticated && user?.id) {
+      fetchSavedJobs();
+    }
+  }, [isAuthenticated, user?.id]);
+
+  // Save Job Handler
+  const handleSaveJob = useCallback(async (job: { 
+    id: string; 
+    title: string; 
+    company: string; 
+    description?: string; 
+    link?: string; 
+    score: number; 
+    roadmap_details?: object 
+  }) => {
+    if (!user?.id) return;
+    try {
+      await api.saveJob({
+        user_id: user.id,
+        original_job_id: job.id,
+        title: job.title,
+        company: job.company,
+        description: job.description || "",
+        link: job.link || "",
+        score: job.score / 100, // Convert back to 0-1 scale
+        roadmap_details: job.roadmap_details || null,
+      });
+      setSavedJobIds(prev => new Set([...prev, job.id]));
+    } catch (err) {
+      console.error("Failed to save job:", err);
+      throw err;
+    }
+  }, [user?.id]);
+
+  // Unsave Job Handler
+  const handleUnsaveJob = useCallback(async (jobId: string) => {
+    if (!user?.id) return;
+    try {
+      // Find the saved job by original_job_id to get its UUID
+      const savedJobs = await api.getSavedJobs(user.id);
+      const savedJob = savedJobs.find((j: SavedJob) => j.original_job_id === jobId);
+      if (savedJob) {
+        await api.removeSavedJob(savedJob.id);
+        setSavedJobIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(jobId);
+          return newSet;
+        });
+      }
+    } catch (err) {
+      console.error("Failed to unsave job:", err);
+      throw err;
+    }
+  }, [user?.id]);
 
   // Combine insights jobs and strategy jobs if needed
   useEffect(() => {
@@ -757,7 +828,11 @@ export default function Dashboard() {
                     companyName={job.company}
                     jobTitle={job.title}
                     matchScore={job.matchScore}
-                    // Optional: Add simple handlers or connect to your real logic
+                    description={job.description}
+                    link={job.link}
+                    isSaved={savedJobIds.has(job.id)}
+                    onSave={handleSaveJob}
+                    onUnsave={handleUnsaveJob}
                     onAnalyzeGap={(id) => console.log("Analyze gap for:", id)}
                     onDeploy={(id) => console.log("Deploy:", id)}
                   />

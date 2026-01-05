@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Trophy,
   User,
+  Bookmark,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -125,6 +126,26 @@ export default function Sidebar() {
             >
               <Trophy size={20} />
               Hackathons
+            </Link>
+          </li>
+
+          {/* Saved Jobs */}
+          <li>
+            <Link
+              href="/saved-jobs"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                isActive("/saved-jobs") || isActive("/global-roadmap")
+                  ? "bg-accent text-surface"
+                  : "text-ink hover:bg-surface"
+              }`}
+              style={
+                isActive("/saved-jobs") || isActive("/global-roadmap")
+                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
+                  : { color: "#1A1A1A" }
+              }
+            >
+              <Bookmark size={20} />
+              Saved Jobs
             </Link>
           </li>
 
