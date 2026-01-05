@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSession } from "@/lib/SessionContext";
+import { useAuth } from "@/lib/AuthContext";
 import {
   MessageCircle,
   Mic,
@@ -30,7 +31,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 type InterviewMode = "voice" | "text";
 type InterviewType = "TECHNICAL" | "HR";
 type AudioState = "idle" | "thinking" | "speaking" | "listening";
-type InterviewStage = "intro" | "resume" | "behavioral" | "experience" | "challenge" | "conclusion" | "end";
+type InterviewStage =
+  | "intro"
+  | "resume"
+  | "behavioral"
+  | "experience"
+  | "challenge"
+  | "conclusion"
+  | "end";
 
 interface Message {
   id: string;
@@ -45,6 +53,7 @@ interface Feedback {
   summary?: string;
   strengths?: string[];
   improvements?: string[];
+  interview_type?: string;
 }
 
 interface InterviewHistoryItem {
@@ -54,17 +63,19 @@ interface InterviewHistoryItem {
   interview_type?: string;
 }
 
-const HARDCODED_USER_ID = "d5040da0-aca7-4ba7-a96b-80e4c9ee1c44";
-const DEFAULT_JOB_ID = "1";
-
 export default function InterviewPage() {
   const { profile, strategyJobs, accessToken } = useSession();
+  const { userMetadata, isAuthenticated } = useAuth();
+
+  // Get user ID from auth context
+  const userId = userMetadata.userId;
 
   // Mode selection state
   const [mode, setMode] = useState<InterviewMode>("text");
-  const [interviewType, setInterviewType] = useState<InterviewType>("TECHNICAL");
+  const [interviewType, setInterviewType] =
+    useState<InterviewType>("TECHNICAL");
   const [isActive, setIsActive] = useState(false);
-  const [selectedJobId, setSelectedJobId] = useState(DEFAULT_JOB_ID);
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
 
   // Interview state
   const [isConnected, setIsConnected] = useState(false);
@@ -103,6 +114,15 @@ export default function InterviewPage() {
     audioStateRef.current = audioState;
   }, [audioState]);
 
+  // Auto-select first job when strategyJobs loads
+  useEffect(() => {
+    if (strategyJobs.length > 0 && !selectedJobId) {
+      const firstJob = strategyJobs[0];
+      setSelectedJobId(String(firstJob.id));
+      setJobTitle(`${firstJob.title} at ${firstJob.company}`);
+    }
+  }, [strategyJobs, selectedJobId]);
+
   // Auto-scroll messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -110,9 +130,11 @@ export default function InterviewPage() {
 
   // Fetch history
   useEffect(() => {
+    if (!userId) return;
+
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/interviews/${HARDCODED_USER_ID}`);
+        const response = await fetch(`${API_URL}/api/interviews/${userId}`);
         if (response.ok) {
           const data = await response.json();
           setHistory(data || []);
@@ -124,7 +146,7 @@ export default function InterviewPage() {
       }
     };
     fetchHistory();
-  }, [feedback]);
+  }, [feedback, userId]);
 
   // Handle job change
   const handleJobChange = (value: string) => {
@@ -179,12 +201,27 @@ export default function InterviewPage() {
         playNextAudio();
         setMessages((prev) => {
           const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && last.content === "Speaking...") return prev;
-          return [...prev, { id: `assistant-${Date.now()}`, role: "assistant", content: "Speaking...", timestamp: new Date() }];
+          if (last?.role === "assistant" && last.content === "Speaking...")
+            return prev;
+          return [
+            ...prev,
+            {
+              id: `assistant-speaking-${Date.now()}-${Math.random()
+                .toString(36)
+                .substr(2, 9)}`,
+              role: "assistant",
+              content: "Speaking...",
+              timestamp: new Date(),
+            },
+          ];
         });
       } else {
         try {
-          const data = JSON.parse(typeof event.data === "string" ? event.data : await event.data.text());
+          const data = JSON.parse(
+            typeof event.data === "string"
+              ? event.data
+              : await event.data.text()
+          );
 
           if (data.type === "config") {
             setJobTitle(data.job_title || "");
@@ -199,7 +236,17 @@ export default function InterviewPage() {
               setCurrentTurn((prev) => prev + 1);
             }
           } else if (data.type === "message") {
-            setMessages((prev) => [...prev, { id: `${data.role}-${Date.now()}`, role: data.role, content: data.content, timestamp: new Date() }]);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `${data.role}-${Date.now()}-${Math.random()
+                  .toString(36)
+                  .substr(2, 9)}`,
+                role: data.role,
+                content: data.content,
+                timestamp: new Date(),
+              },
+            ]);
           } else if (data.type === "feedback") {
             setFeedback(data.data);
           } else if (data.type === "error") {
@@ -223,13 +270,21 @@ export default function InterviewPage() {
     setIsConnecting(true);
     setAudioState(mode === "voice" ? "thinking" : "idle");
 
-    const wsPath = mode === "voice" ? `/ws/interview/${selectedJobId}` : `/ws/interview/text/${selectedJobId}`;
+    const wsPath =
+      mode === "voice"
+        ? `/ws/interview/${selectedJobId}`
+        : `/ws/interview/text/${selectedJobId}`;
 
     try {
       // For voice mode, setup audio
       if (mode === "voice") {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+          audio: {
+            sampleRate: 16000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
         });
         streamRef.current = stream;
 
@@ -250,13 +305,23 @@ export default function InterviewPage() {
         wsRef.current = ws;
 
         ws.onopen = () => {
-          ws.send(JSON.stringify({ access_token: accessToken || "test", interview_type: interviewType }));
+          ws.send(
+            JSON.stringify({
+              access_token: accessToken || "test",
+              interview_type: interviewType,
+              user_id: userId,
+            })
+          );
           setIsConnected(true);
           setIsConnecting(false);
           setIsActive(true);
 
           processor.onaudioprocess = (e) => {
-            if (ws.readyState === WebSocket.OPEN && audioStateRef.current === "listening" && !isMuted) {
+            if (
+              ws.readyState === WebSocket.OPEN &&
+              audioStateRef.current === "listening" &&
+              !isMuted
+            ) {
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmData = new Int16Array(inputData.length);
               for (let i = 0; i < inputData.length; i++) {
@@ -270,7 +335,9 @@ export default function InterviewPage() {
           // Monitor audio level
           const updateLevel = () => {
             if (!analyserRef.current) return;
-            const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+            const dataArray = new Uint8Array(
+              analyserRef.current.frequencyBinCount
+            );
             analyserRef.current.getByteFrequencyData(dataArray);
             const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
             setAudioLevel(avg / 255);
@@ -292,7 +359,13 @@ export default function InterviewPage() {
         wsRef.current = ws;
 
         ws.onopen = () => {
-          ws.send(JSON.stringify({ access_token: accessToken || "test", interview_type: interviewType }));
+          ws.send(
+            JSON.stringify({
+              access_token: accessToken || "test",
+              interview_type: interviewType,
+              user_id: userId,
+            })
+          );
           setIsConnected(true);
           setIsConnecting(false);
           setIsActive(true);
@@ -307,16 +380,39 @@ export default function InterviewPage() {
       }
     } catch (e) {
       console.error("Start error:", e);
-      setError(mode === "voice" ? "Failed to access microphone" : "Failed to connect");
+      setError(
+        mode === "voice" ? "Failed to access microphone" : "Failed to connect"
+      );
       setIsConnecting(false);
     }
-  }, [mode, selectedJobId, accessToken, interviewType, handleMessage, isMuted, isConnected]);
+  }, [
+    mode,
+    selectedJobId,
+    accessToken,
+    interviewType,
+    handleMessage,
+    isMuted,
+    isConnected,
+  ]);
 
   // Send text message
   const sendMessage = useCallback(() => {
-    if (!inputMessage.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (
+      !inputMessage.trim() ||
+      !wsRef.current ||
+      wsRef.current.readyState !== WebSocket.OPEN
+    )
+      return;
 
-    setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: "user", content: inputMessage, timestamp: new Date() }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: inputMessage,
+        timestamp: new Date(),
+      },
+    ]);
     wsRef.current.send(JSON.stringify({ message: inputMessage }));
     setInputMessage("");
   }, [inputMessage]);
@@ -348,8 +444,13 @@ export default function InterviewPage() {
   // Get stage color
   const getStageColor = (stage: InterviewStage) => {
     const colors: Record<InterviewStage, string> = {
-      intro: "#10B981", resume: "#3B82F6", behavioral: "#8B5CF6",
-      experience: "#F59E0B", challenge: "#EF4444", conclusion: "#D95D39", end: "#6B7280",
+      intro: "#10B981",
+      resume: "#3B82F6",
+      behavioral: "#8B5CF6",
+      experience: "#F59E0B",
+      challenge: "#EF4444",
+      conclusion: "#D95D39",
+      end: "#6B7280",
     };
     return colors[stage] || "#6B7280";
   };
@@ -357,10 +458,29 @@ export default function InterviewPage() {
   // Audio state display
   const getAudioStateDisplay = () => {
     switch (audioState) {
-      case "thinking": return { icon: Loader2, text: "AI is thinking...", color: "#F59E0B", animate: true };
-      case "speaking": return { icon: Volume2, text: "AI is speaking...", color: "#D95D39", animate: true };
-      case "listening": return { icon: Mic, text: "Your turn - speak now!", color: "#10B981", animate: false };
-      default: return { icon: Mic, text: "Ready", color: "#6B7280", animate: false };
+      case "thinking":
+        return {
+          icon: Loader2,
+          text: "AI is thinking...",
+          color: "#F59E0B",
+          animate: true,
+        };
+      case "speaking":
+        return {
+          icon: Volume2,
+          text: "AI is speaking...",
+          color: "#D95D39",
+          animate: true,
+        };
+      case "listening":
+        return {
+          icon: Mic,
+          text: "Your turn - speak now!",
+          color: "#10B981",
+          animate: false,
+        };
+      default:
+        return { icon: Mic, text: "Ready", color: "#6B7280", animate: false };
     }
   };
 
@@ -374,19 +494,38 @@ export default function InterviewPage() {
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: "linear-gradient(135deg, #D95D39 0%, #F97316 100%)" }}>
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #D95D39 0%, #F97316 100%)",
+                }}
+              >
                 <Bot className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="font-bold text-xl text-slate-900">Mock Interview</h1>
-                <p className="text-sm text-slate-500">{isActive ? `${interviewType} • ${mode === "voice" ? "Voice" : "Text"}` : "AI-Powered Practice"}</p>
+                <h1 className="font-bold text-xl text-slate-900">
+                  Mock Interview
+                </h1>
+                <p className="text-sm text-slate-500">
+                  {isActive
+                    ? `${interviewType} • ${
+                        mode === "voice" ? "Voice" : "Text"
+                      }`
+                    : "AI-Powered Practice"}
+                </p>
               </div>
             </div>
 
             {isActive && (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-500">Turn {currentTurn}/6</span>
-                <div className="px-4 py-2 rounded-full text-sm font-medium text-white" style={{ backgroundColor: getStageColor(currentStage) }}>
+                <span className="text-sm text-slate-500">
+                  Turn {currentTurn}/6
+                </span>
+                <div
+                  className="px-4 py-2 rounded-full text-sm font-medium text-white"
+                  style={{ backgroundColor: getStageColor(currentStage) }}
+                >
                   {currentStage.charAt(0).toUpperCase() + currentStage.slice(1)}
                 </div>
               </div>
@@ -401,7 +540,12 @@ export default function InterviewPage() {
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-500" />
             <p className="text-red-700 flex-1">{error}</p>
-            <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">✕</button>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-500 hover:text-red-700"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -414,9 +558,12 @@ export default function InterviewPage() {
                 <Sparkles className="w-4 h-4" />
                 AI-Powered Interview Simulation
               </div>
-              <h2 className="text-4xl font-bold text-slate-900 mb-4">Practice Your Interview Skills</h2>
+              <h2 className="text-4xl font-bold text-slate-900 mb-4">
+                Practice Your Interview Skills
+              </h2>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                Choose your preferred mode and interview type, then start practicing.
+                Choose your preferred mode and interview type, then start
+                practicing.
               </p>
             </div>
 
@@ -427,7 +574,9 @@ export default function InterviewPage() {
                 <button
                   onClick={() => setMode("text")}
                   className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-medium transition-all ${
-                    mode === "text" ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
+                    mode === "text"
+                      ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md"
+                      : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   <MessageCircle className="w-5 h-5" />
@@ -436,7 +585,9 @@ export default function InterviewPage() {
                 <button
                   onClick={() => setMode("voice")}
                   className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-medium transition-all ${
-                    mode === "voice" ? "bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
+                    mode === "voice"
+                      ? "bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md"
+                      : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   <Mic className="w-5 h-5" />
@@ -449,7 +600,9 @@ export default function InterviewPage() {
                 <button
                   onClick={() => setInterviewType("TECHNICAL")}
                   className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
-                    interviewType === "TECHNICAL" ? "bg-slate-900 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
+                    interviewType === "TECHNICAL"
+                      ? "bg-slate-900 text-white shadow-md"
+                      : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   <Briefcase className="w-4 h-4" />
@@ -458,7 +611,9 @@ export default function InterviewPage() {
                 <button
                   onClick={() => setInterviewType("HR")}
                   className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
-                    interviewType === "HR" ? "bg-slate-900 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
+                    interviewType === "HR"
+                      ? "bg-slate-900 text-white shadow-md"
+                      : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   <GraduationCap className="w-4 h-4" />
@@ -467,34 +622,48 @@ export default function InterviewPage() {
               </div>
 
               {/* Job Selection */}
-              {strategyJobs.length > 0 && (
+              {strategyJobs.length > 0 ? (
                 <select
                   value={selectedJobId}
                   onChange={(e) => handleJobChange(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 bg-white focus:outline-none focus:border-orange-500 transition-all"
                 >
-                  <option value="1">General Interview</option>
                   {strategyJobs.map((job) => (
                     <option key={job.id} value={String(job.id)}>
                       {job.title} at {job.company}
                     </option>
                   ))}
                 </select>
+              ) : (
+                <div className="w-full px-4 py-3 rounded-xl border-2 border-amber-200 bg-amber-50 text-amber-700 text-sm">
+                  No jobs available. Please add jobs from the Jobs page first.
+                </div>
               )}
 
               {/* Start Button */}
               <button
                 onClick={startInterview}
-                disabled={isConnecting}
-                className="w-full py-4 rounded-xl text-white font-medium flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-lg disabled:opacity-50"
-                style={{ background: mode === "voice" ? "linear-gradient(135deg, #D95D39 0%, #F97316 100%)" : "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)" }}
+                disabled={isConnecting || !selectedJobId}
+                className="w-full py-4 rounded-xl text-white font-medium flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background:
+                    mode === "voice"
+                      ? "linear-gradient(135deg, #D95D39 0%, #F97316 100%)"
+                      : "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)",
+                }}
               >
                 {isConnecting ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Connecting...</>
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" /> Connecting...
+                  </>
                 ) : mode === "voice" ? (
-                  <><Phone className="w-5 h-5" /> Start Voice Interview</>
+                  <>
+                    <Phone className="w-5 h-5" /> Start Voice Interview
+                  </>
                 ) : (
-                  <><MessageCircle className="w-5 h-5" /> Start Chat Interview</>
+                  <>
+                    <MessageCircle className="w-5 h-5" /> Start Chat Interview
+                  </>
                 )}
               </button>
             </div>
@@ -507,11 +676,15 @@ export default function InterviewPage() {
               </h3>
 
               {isLoadingHistory ? (
-                <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                </div>
               ) : history.length === 0 ? (
                 <div className="text-center py-8 bg-slate-50 rounded-xl border-dashed border-2 border-slate-200">
                   <Bot className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                  <p className="text-slate-500">No interviews yet. Start practicing!</p>
+                  <p className="text-slate-500">
+                    No interviews yet. Start practicing!
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -522,16 +695,37 @@ export default function InterviewPage() {
                       className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors text-left"
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${item.feedback_report?.verdict?.toLowerCase().includes("hire") ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"}`}>
+                        <div
+                          className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${
+                            item.feedback_report?.verdict
+                              ?.toLowerCase()
+                              .includes("hire")
+                              ? "bg-green-100 text-green-600"
+                              : "bg-orange-100 text-orange-600"
+                          }`}
+                        >
                           {item.feedback_report?.score ?? "?"}
                         </div>
                         <div>
-                          <div className="font-medium text-slate-900">{new Date(item.created_at).toLocaleDateString()}</div>
-                          <div className="text-sm text-slate-500">{item.interview_type || "Interview"}</div>
+                          <div className="font-medium text-slate-900">
+                            {new Date(item.created_at).toLocaleDateString()}
+                          </div>
+                          <div className="text-sm text-slate-500">
+                            {item.feedback_report?.interview_type ||
+                              "Interview"}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${item.feedback_report?.verdict?.toLowerCase().includes("hire") ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                        <span
+                          className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            item.feedback_report?.verdict
+                              ?.toLowerCase()
+                              .includes("hire")
+                              ? "bg-green-100 text-green-700"
+                              : "bg-orange-100 text-orange-700"
+                          }`}
+                        >
                           {item.feedback_report?.verdict || "Incomplete"}
                         </span>
                         <ChevronRight className="w-5 h-5 text-slate-300" />
@@ -548,14 +742,36 @@ export default function InterviewPage() {
         {isActive && mode === "voice" && (
           <div className="space-y-6">
             {/* Audio State Indicator */}
-            <div className="p-6 rounded-2xl border-2 shadow-lg" style={{ borderColor: audioStateDisplay.color, backgroundColor: `${audioStateDisplay.color}10` }}>
+            <div
+              className="p-6 rounded-2xl border-2 shadow-lg"
+              style={{
+                borderColor: audioStateDisplay.color,
+                backgroundColor: `${audioStateDisplay.color}10`,
+              }}
+            >
               <div className="flex items-center justify-center gap-4">
-                <div className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: audioStateDisplay.color }}>
-                  <AudioStateIcon className={`w-8 h-8 text-white ${audioStateDisplay.animate ? "animate-pulse" : ""}`} />
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ backgroundColor: audioStateDisplay.color }}
+                >
+                  <AudioStateIcon
+                    className={`w-8 h-8 text-white ${
+                      audioStateDisplay.animate ? "animate-pulse" : ""
+                    }`}
+                  />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold" style={{ color: audioStateDisplay.color }}>{audioStateDisplay.text}</p>
-                  <p className="text-sm text-slate-500">{audioState === "listening" ? "Microphone active" : "Please wait..."}</p>
+                  <p
+                    className="text-2xl font-bold"
+                    style={{ color: audioStateDisplay.color }}
+                  >
+                    {audioStateDisplay.text}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    {audioState === "listening"
+                      ? "Microphone active"
+                      : "Please wait..."}
+                  </p>
                 </div>
               </div>
             </div>
@@ -565,7 +781,17 @@ export default function InterviewPage() {
               <div className="flex items-center justify-center">
                 <div className="flex items-end gap-1 h-10">
                   {[...Array(20)].map((_, i) => (
-                    <div key={i} className="w-1.5 rounded-full transition-all" style={{ height: `${Math.max(4, audioLevel * 40 * (Math.sin(i * 0.5) + 1))}px`, background: "linear-gradient(to top, #10B981, #34D399)" }} />
+                    <div
+                      key={i}
+                      className="w-1.5 rounded-full transition-all"
+                      style={{
+                        height: `${Math.max(
+                          4,
+                          audioLevel * 40 * (Math.sin(i * 0.5) + 1)
+                        )}px`,
+                        background: "linear-gradient(to top, #10B981, #34D399)",
+                      }}
+                    />
                   ))}
                 </div>
               </div>
@@ -575,16 +801,40 @@ export default function InterviewPage() {
             <div className="bg-white rounded-2xl border border-slate-200 p-6 h-[300px] overflow-y-auto shadow-lg">
               {messages.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-slate-400">
-                  <Loader2 className="w-6 h-6 animate-spin mr-2" /> Waiting for interviewer...
+                  <Loader2 className="w-6 h-6 animate-spin mr-2" /> Waiting for
+                  interviewer...
                 </div>
               ) : (
                 <div className="space-y-4">
                   {messages.map((msg) => (
-                    <div key={msg.id} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: msg.role === "user" ? "linear-gradient(135deg, #3B82F6, #1D4ED8)" : "linear-gradient(135deg, #D95D39, #F97316)" }}>
-                        {msg.role === "user" ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-white" />}
+                    <div
+                      key={msg.id}
+                      className={`flex gap-3 ${
+                        msg.role === "user" ? "flex-row-reverse" : ""
+                      }`}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background:
+                            msg.role === "user"
+                              ? "linear-gradient(135deg, #3B82F6, #1D4ED8)"
+                              : "linear-gradient(135deg, #D95D39, #F97316)",
+                        }}
+                      >
+                        {msg.role === "user" ? (
+                          <User className="w-4 h-4 text-white" />
+                        ) : (
+                          <Bot className="w-4 h-4 text-white" />
+                        )}
                       </div>
-                      <div className={`max-w-[80%] p-3 rounded-xl ${msg.role === "user" ? "bg-blue-50 text-blue-900" : "bg-slate-50 text-slate-900"}`}>
+                      <div
+                        className={`max-w-[80%] p-3 rounded-xl ${
+                          msg.role === "user"
+                            ? "bg-blue-50 text-blue-900"
+                            : "bg-slate-50 text-slate-900"
+                        }`}
+                      >
                         <p className="text-sm">{msg.content}</p>
                       </div>
                     </div>
@@ -599,11 +849,30 @@ export default function InterviewPage() {
               <button
                 onClick={() => setIsMuted(!isMuted)}
                 disabled={audioState !== "listening"}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg ${audioState !== "listening" ? "bg-slate-200 cursor-not-allowed" : isMuted ? "bg-red-100 border-2 border-red-300" : "bg-white border-2 border-green-400"}`}
+                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                  audioState !== "listening"
+                    ? "bg-slate-200 cursor-not-allowed"
+                    : isMuted
+                    ? "bg-red-100 border-2 border-red-300"
+                    : "bg-white border-2 border-green-400"
+                }`}
               >
-                {isMuted ? <MicOff className="w-6 h-6 text-red-600" /> : <Mic className={`w-6 h-6 ${audioState === "listening" ? "text-green-600" : "text-slate-400"}`} />}
+                {isMuted ? (
+                  <MicOff className="w-6 h-6 text-red-600" />
+                ) : (
+                  <Mic
+                    className={`w-6 h-6 ${
+                      audioState === "listening"
+                        ? "text-green-600"
+                        : "text-slate-400"
+                    }`}
+                  />
+                )}
               </button>
-              <button onClick={endInterview} className="w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all shadow-lg">
+              <button
+                onClick={endInterview}
+                className="w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all shadow-lg"
+              >
                 <PhoneOff className="w-7 h-7 text-white" />
               </button>
             </div>
@@ -617,23 +886,52 @@ export default function InterviewPage() {
             <div className="bg-white rounded-2xl border border-slate-200 p-6 h-[400px] overflow-y-auto shadow-lg">
               {messages.length === 0 && isThinking && (
                 <div className="flex items-center justify-center h-full text-slate-400">
-                  <Loader2 className="w-6 h-6 animate-spin mr-2" /> AI is preparing...
+                  <Loader2 className="w-6 h-6 animate-spin mr-2" /> AI is
+                  preparing...
                 </div>
               )}
               <div className="space-y-4">
                 {messages.map((msg) => (
-                  <div key={msg.id} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: msg.role === "user" ? "linear-gradient(135deg, #3B82F6, #1D4ED8)" : "linear-gradient(135deg, #D95D39, #F97316)" }}>
-                      {msg.role === "user" ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-white" />}
+                  <div
+                    key={msg.id}
+                    className={`flex gap-3 ${
+                      msg.role === "user" ? "flex-row-reverse" : ""
+                    }`}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background:
+                          msg.role === "user"
+                            ? "linear-gradient(135deg, #3B82F6, #1D4ED8)"
+                            : "linear-gradient(135deg, #D95D39, #F97316)",
+                      }}
+                    >
+                      {msg.role === "user" ? (
+                        <User className="w-4 h-4 text-white" />
+                      ) : (
+                        <Bot className="w-4 h-4 text-white" />
+                      )}
                     </div>
-                    <div className={`max-w-[80%] p-4 rounded-xl ${msg.role === "user" ? "bg-blue-50 text-blue-900" : "bg-slate-50 text-slate-900"}`}>
+                    <div
+                      className={`max-w-[80%] p-4 rounded-xl ${
+                        msg.role === "user"
+                          ? "bg-blue-50 text-blue-900"
+                          : "bg-slate-50 text-slate-900"
+                      }`}
+                    >
                       <p className="whitespace-pre-wrap">{msg.content}</p>
                     </div>
                   </div>
                 ))}
                 {isThinking && (
                   <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #D95D39, #F97316)" }}>
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{
+                        background: "linear-gradient(135deg, #D95D39, #F97316)",
+                      }}
+                    >
                       <Bot className="w-4 h-4 text-white" />
                     </div>
                     <div className="px-4 py-3 bg-slate-100 rounded-xl">
@@ -660,11 +958,17 @@ export default function InterviewPage() {
                 onClick={sendMessage}
                 disabled={!inputMessage.trim() || isThinking}
                 className="px-6 py-3 rounded-xl text-white font-medium flex items-center gap-2 disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)" }}
+                style={{
+                  background:
+                    "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)",
+                }}
               >
                 <Send className="w-5 h-5" />
               </button>
-              <button onClick={endInterview} className="px-4 py-3 rounded-xl bg-red-100 text-red-600 hover:bg-red-200 transition-colors">
+              <button
+                onClick={endInterview}
+                className="px-4 py-3 rounded-xl bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+              >
                 End
               </button>
             </div>
@@ -682,14 +986,27 @@ export default function InterviewPage() {
 
               <div className="grid grid-cols-2 gap-6 mb-8">
                 <div className="p-5 bg-slate-50 rounded-xl">
-                  <span className="text-sm text-slate-500 block mb-1">Score</span>
+                  <span className="text-sm text-slate-500 block mb-1">
+                    Score
+                  </span>
                   <span className="text-4xl font-bold text-slate-900">
-                    {(feedback || selectedHistory)?.score}<span className="text-lg text-slate-400">/100</span>
+                    {(feedback || selectedHistory)?.score}
+                    <span className="text-lg text-slate-400">/100</span>
                   </span>
                 </div>
                 <div className="p-5 bg-slate-50 rounded-xl">
-                  <span className="text-sm text-slate-500 block mb-1">Verdict</span>
-                  <span className={`text-2xl font-bold ${(feedback || selectedHistory)?.verdict?.toLowerCase().includes("hire") ? "text-green-600" : "text-orange-600"}`}>
+                  <span className="text-sm text-slate-500 block mb-1">
+                    Verdict
+                  </span>
+                  <span
+                    className={`text-2xl font-bold ${
+                      (feedback || selectedHistory)?.verdict
+                        ?.toLowerCase()
+                        .includes("hire")
+                        ? "text-green-600"
+                        : "text-orange-600"
+                    }`}
+                  >
                     {(feedback || selectedHistory)?.verdict}
                   </span>
                 </div>
@@ -698,32 +1015,57 @@ export default function InterviewPage() {
               {(feedback || selectedHistory)?.summary && (
                 <div className="mb-6">
                   <h3 className="font-semibold text-slate-900 mb-2">Summary</h3>
-                  <p className="text-slate-600 bg-slate-50 p-4 rounded-xl">{(feedback || selectedHistory)?.summary}</p>
+                  <p className="text-slate-600 bg-slate-50 p-4 rounded-xl">
+                    {(feedback || selectedHistory)?.summary}
+                  </p>
                 </div>
               )}
 
               {(feedback || selectedHistory)?.strengths && (
                 <div className="mb-6">
-                  <h3 className="font-semibold text-green-700 mb-2">✓ Strengths</h3>
+                  <h3 className="font-semibold text-green-700 mb-2">
+                    ✓ Strengths
+                  </h3>
                   <ul className="space-y-2">
-                    {(feedback || selectedHistory)?.strengths?.map((s, i) => <li key={i} className="text-slate-600 flex gap-2"><span className="text-green-500">•</span>{s}</li>)}
+                    {(feedback || selectedHistory)?.strengths?.map((s, i) => (
+                      <li key={i} className="text-slate-600 flex gap-2">
+                        <span className="text-green-500">•</span>
+                        {s}
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
 
               {(feedback || selectedHistory)?.improvements && (
                 <div className="mb-8">
-                  <h3 className="font-semibold text-orange-700 mb-2">↑ Areas to Improve</h3>
+                  <h3 className="font-semibold text-orange-700 mb-2">
+                    ↑ Areas to Improve
+                  </h3>
                   <ul className="space-y-2">
-                    {(feedback || selectedHistory)?.improvements?.map((s, i) => <li key={i} className="text-slate-600 flex gap-2"><span className="text-orange-500">•</span>{s}</li>)}
+                    {(feedback || selectedHistory)?.improvements?.map(
+                      (s, i) => (
+                        <li key={i} className="text-slate-600 flex gap-2">
+                          <span className="text-orange-500">•</span>
+                          {s}
+                        </li>
+                      )
+                    )}
                   </ul>
                 </div>
               )}
 
               <button
-                onClick={() => { setFeedback(null); setSelectedHistory(null); setMessages([]); }}
+                onClick={() => {
+                  setFeedback(null);
+                  setSelectedHistory(null);
+                  setMessages([]);
+                }}
                 className="w-full py-4 rounded-xl text-white font-medium transition-all hover:opacity-90 shadow-lg"
-                style={{ background: "linear-gradient(135deg, #D95D39 0%, #F97316 100%)" }}
+                style={{
+                  background:
+                    "linear-gradient(135deg, #D95D39 0%, #F97316 100%)",
+                }}
               >
                 Start New Interview
               </button>
