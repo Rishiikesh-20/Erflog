@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import {
-  Home,
   Target,
   Settings,
   LayoutDashboard,
@@ -48,26 +47,6 @@ export default function Sidebar() {
       {/* Navigation Links */}
       <nav className="flex-1 px-4 py-6">
         <ul className="space-y-2">
-          {/* Nexus / Home */}
-          <li>
-            <Link
-              href="/"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                pathname === "/"
-                  ? "bg-accent text-surface"
-                  : "text-ink hover:bg-surface"
-              }`}
-              style={
-                pathname === "/"
-                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
-                  : { color: "#1A1A1A" }
-              }
-            >
-              <Home size={20} />
-              Nexus
-            </Link>
-          </li>
-
           {/* Dashboard */}
           <li>
             <Link
@@ -104,7 +83,7 @@ export default function Sidebar() {
               }
             >
               <Target size={20} />
-              Strategy Board
+              My Jobs
             </Link>
           </li>
 
@@ -125,26 +104,6 @@ export default function Sidebar() {
             >
               <Trophy size={20} />
               Hackathons
-            </Link>
-          </li>
-
-          {/* Interview Practice */}
-          <li>
-            <Link
-              href="/interview"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                isActive("/interview")
-                  ? "bg-accent text-surface"
-                  : "text-ink hover:bg-surface"
-              }`}
-              style={
-                isActive("/interview")
-                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
-                  : { color: "#1A1A1A" }
-              }
-            >
-              <Bot size={20} />
-              Mock Interview
             </Link>
           </li>
 
