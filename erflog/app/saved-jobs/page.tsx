@@ -312,9 +312,51 @@ export default function SavedJobsPage() {
                       <p className="text-sm text-secondary">{job.company}</p>
                     </div>
                     {job.score && (
-                      <Badge variant="score" score={job.score} />
+                      <Badge variant="score" score={Math.round(job.score * 100)} />
                     )}
                   </div>
+
+                  {/* Progress Bar */}
+                  {job.progress && Object.keys(job.progress).length > 0 && (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="text-secondary">Learning Progress</span>
+                        <span className="text-[#D95D39] font-medium">
+                          {(() => {
+                            const fullJobData = job.roadmap_details?.full_job_data as any;
+                            const graph = job.roadmap_details?.graph || 
+                              fullJobData?.roadmap?.graph;
+                            const totalNodes = graph?.nodes?.length || 0;
+                            const completedNodes = Object.values(job.progress).filter(
+                              (p: any) => p.completed
+                            ).length;
+                            return totalNodes > 0 
+                              ? `${Math.round((completedNodes / totalNodes) * 100)}%`
+                              : "0%";
+                          })()}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#D95D39] rounded-full transition-all"
+                          style={{
+                            width: (() => {
+                              const fullJobData = job.roadmap_details?.full_job_data as any;
+                              const graph = job.roadmap_details?.graph || 
+                                fullJobData?.roadmap?.graph;
+                              const totalNodes = graph?.nodes?.length || 0;
+                              const completedNodes = Object.values(job.progress).filter(
+                                (p: any) => p.completed
+                              ).length;
+                              return totalNodes > 0 
+                                ? `${(completedNodes / totalNodes) * 100}%`
+                                : "0%";
+                            })(),
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Missing Skills */}
                   {job.roadmap_details?.missing_skills && (

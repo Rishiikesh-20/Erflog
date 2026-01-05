@@ -2,34 +2,73 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Circle, ArrowRight, AlertCircle, Download, CheckCircle, Trophy, Sparkles, Target } from 'lucide-react';
-import { RoadmapDetails } from '@/lib/api';
-import { useEffect, useRef, useState } from 'react';
+import { RoadmapDetails, getProgress, updateProgress } from '@/lib/api';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface RoadmapProps {
   data: RoadmapDetails | null;
+  savedJobId?: string; // Optional: If provided, progress will be persisted to backend
 }
 
 interface CompletionState {
   [nodeId: string]: boolean;
 }
 
-export default function Roadmap({ data }: RoadmapProps) {
+export default function Roadmap({ data, savedJobId }: RoadmapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const roadmapRef = useRef<HTMLDivElement>(null);
   const [completedNodes, setCompletedNodes] = useState<CompletionState>({});
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationMessage, setCelebrationMessage] = useState('');
+  const [isLoadingProgress, setIsLoadingProgress] = useState(false);
+
+  // Load progress from backend when component mounts (if savedJobId is provided)
+  useEffect(() => {
+    if (savedJobId) {
+      setIsLoadingProgress(true);
+      getProgress(savedJobId)
+        .then((response) => {
+          // Convert backend format to local format
+          const loadedProgress: CompletionState = {};
+          if (response.progress) {
+            Object.entries(response.progress).forEach(([nodeId, data]) => {
+              loadedProgress[nodeId] = data.completed;
+            });
+          }
+          setCompletedNodes(loadedProgress);
+        })
+        .catch((err) => {
+          console.error('Failed to load progress:', err);
+        })
+        .finally(() => {
+          setIsLoadingProgress(false);
+        });
+    }
+  }, [savedJobId]);
 
   // Calculate completion percentage
   const totalNodes = data?.graph?.nodes?.length || 0;
   const completedCount = Object.values(completedNodes).filter(Boolean).length;
   const completionPercentage = totalNodes > 0 ? Math.round((completedCount / totalNodes) * 100) : 0;
 
-  const handleNodeComplete = (nodeId: string, nodeLabel: string) => {
-    const newState = { ...completedNodes, [nodeId]: !completedNodes[nodeId] };
+  const handleNodeComplete = useCallback(async (nodeId: string, nodeLabel: string) => {
+    const wasCompleted = completedNodes[nodeId];
+    const newState = { ...completedNodes, [nodeId]: !wasCompleted };
     setCompletedNodes(newState);
     
-    if (!completedNodes[nodeId]) {
+    // Persist to backend if savedJobId is provided
+    if (savedJobId) {
+      try {
+        await updateProgress(savedJobId, nodeId, !wasCompleted);
+      } catch (err) {
+        console.error('Failed to save progress:', err);
+        // Revert on error
+        setCompletedNodes(completedNodes);
+        return;
+      }
+    }
+    
+    if (!wasCompleted) {
       // Node just completed
       const messages = [
         `🎉 Awesome! "${nodeLabel}" completed!`,
@@ -42,7 +81,7 @@ export default function Roadmap({ data }: RoadmapProps) {
       setShowCelebration(true);
       setTimeout(() => setShowCelebration(false), 3000);
     }
-  };
+  }, [completedNodes, savedJobId]);
 
   const downloadRoadmap = async () => {
     if (!data?.graph?.nodes) return;

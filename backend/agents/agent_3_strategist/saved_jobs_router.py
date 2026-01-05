@@ -45,6 +45,8 @@ class SaveJobRequest(BaseModel):
     link: Optional[str] = None
     score: Optional[float] = None
     roadmap_details: Optional[dict] = None
+    full_job_data: Optional[dict] = None  # Full job data for complete save
+    progress: Optional[dict] = None  # User progress on roadmap nodes
 
 class SavedJobResponse(BaseModel):
     id: str
@@ -56,6 +58,7 @@ class SavedJobResponse(BaseModel):
     link: Optional[str] = None
     score: Optional[float] = None
     roadmap_details: Optional[dict] = None
+    progress: Optional[dict] = None  # User progress on roadmap nodes
     created_at: str
 
 class MergeRoadmapsRequest(BaseModel):
@@ -86,6 +89,14 @@ async def save_job(request: SaveJobRequest):
     if existing.data:
         raise HTTPException(status_code=400, detail="Job already saved")
     
+    # Merge full_job_data into roadmap_details for complete storage
+    roadmap_data = request.roadmap_details or {}
+    if request.full_job_data:
+        roadmap_data = {
+            **roadmap_data,
+            "full_job_data": request.full_job_data
+        }
+    
     # Save the job
     job_data = {
         "user_id": request.user_id,
@@ -95,7 +106,8 @@ async def save_job(request: SaveJobRequest):
         "description": request.description,
         "link": request.link,
         "score": request.score,
-        "roadmap_details": request.roadmap_details,
+        "roadmap_details": roadmap_data,
+        "progress": request.progress or {},  # Initialize empty progress
     }
     
     result = supabase.table("saved_jobs").insert(job_data).execute()
@@ -114,6 +126,7 @@ async def save_job(request: SaveJobRequest):
         link=saved_job.get("link"),
         score=saved_job.get("score"),
         roadmap_details=saved_job.get("roadmap_details"),
+        progress=saved_job.get("progress"),
         created_at=saved_job["created_at"]
     )
 
@@ -138,6 +151,7 @@ async def get_saved_jobs(user_id: str):
             link=job.get("link"),
             score=job.get("score"),
             roadmap_details=job.get("roadmap_details"),
+            progress=job.get("progress"),
             created_at=job["created_at"]
         )
         for job in result.data
@@ -166,6 +180,84 @@ async def check_job_saved(user_id: str, original_job_id: str):
     return {"is_saved": len(result.data) > 0, "saved_job_id": result.data[0]["id"] if result.data else None}
 
 
+class UpdateProgressRequest(BaseModel):
+    node_id: str
+    completed: bool
+
+
+@router.put("/progress/{job_id}")
+async def update_progress(job_id: str, request: UpdateProgressRequest):
+    """Update progress on a roadmap node for a saved job"""
+    supabase = get_supabase()
+    
+    # Get current job
+    result = supabase.table("saved_jobs").select("progress").eq("id", job_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Saved job not found")
+    
+    # Update progress dict
+    current_progress = result.data[0].get("progress") or {}
+    current_progress[request.node_id] = {
+        "completed": request.completed,
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    # Save updated progress
+    update_result = supabase.table("saved_jobs").update({
+        "progress": current_progress
+    }).eq("id", job_id).execute()
+    
+    if not update_result.data:
+        raise HTTPException(status_code=500, detail="Failed to update progress")
+    
+    return {
+        "status": "success",
+        "progress": current_progress,
+        "message": f"Progress updated for node {request.node_id}"
+    }
+
+
+@router.get("/progress/{job_id}")
+async def get_progress(job_id: str):
+    """Get progress for a saved job"""
+    supabase = get_supabase()
+    
+    result = supabase.table("saved_jobs").select("progress, roadmap_details").eq("id", job_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Saved job not found")
+    
+    progress = result.data[0].get("progress") or {}
+    roadmap = result.data[0].get("roadmap_details") or {}
+    
+    # Calculate completion percentage
+    total_nodes = 0
+    completed_nodes = 0
+    
+    # Count nodes from graph
+    graph = roadmap.get("graph", {})
+    if not graph and roadmap.get("full_job_data"):
+        graph = roadmap.get("full_job_data", {}).get("roadmap", {}).get("graph", {})
+    
+    nodes = graph.get("nodes", [])
+    total_nodes = len(nodes)
+    
+    for node in nodes:
+        node_id = node.get("id")
+        if node_id and progress.get(node_id, {}).get("completed"):
+            completed_nodes += 1
+    
+    completion_percentage = (completed_nodes / total_nodes * 100) if total_nodes > 0 else 0
+    
+    return {
+        "progress": progress,
+        "total_nodes": total_nodes,
+        "completed_nodes": completed_nodes,
+        "completion_percentage": round(completion_percentage, 1)
+    }
+
+
 # =============================================================================
 # Roadmap Merge Endpoints
 # =============================================================================
@@ -189,17 +281,32 @@ async def merge_roadmaps(request: MergeRoadmapsRequest):
     if len(jobs) < 2:
         raise HTTPException(status_code=404, detail="Could not find enough jobs to merge")
     
-    # Prepare roadmaps for LLM
+    # Prepare roadmaps for LLM - extract resources from each job
     roadmaps_data = []
+    all_resources = {}
     for job in jobs:
         roadmap = job.get("roadmap_details", {})
+        # Extract resources from the roadmap
+        job_resources = roadmap.get("resources", {})
+        if roadmap.get("full_job_data"):
+            full_data = roadmap.get("full_job_data", {})
+            if full_data.get("roadmap") and full_data["roadmap"].get("resources"):
+                job_resources = full_data["roadmap"]["resources"]
+        
+        # Merge resources
+        for node_id, resources in job_resources.items():
+            if node_id not in all_resources:
+                all_resources[node_id] = []
+            all_resources[node_id].extend(resources)
+        
         roadmaps_data.append({
             "job_title": job["title"],
             "company": job["company"],
-            "roadmap": roadmap
+            "roadmap": roadmap,
+            "resources": job_resources
         })
     
-    # Create merge prompt
+    # Create merge prompt - 3 weeks max with resources
     merge_prompt = f"""You are an expert career advisor. Merge the following job roadmaps into a single, comprehensive master roadmap.
 
 INPUT ROADMAPS:
@@ -209,14 +316,15 @@ Create a merged roadmap that:
 1. Combines all missing skills from all jobs, removing duplicates
 2. Prioritizes skills that appear in multiple jobs (higher priority)
 3. Creates a logical learning sequence
-4. Provides estimated timeframes for each skill
+4. **IMPORTANT: The total plan should be 3 WEEKS MAXIMUM (21 days)**
 5. Groups skills by category (Programming, Frameworks, Tools, Soft Skills, etc.)
+6. **Include learning resources and links from the input roadmaps for each skill**
 
 Return ONLY valid JSON in this exact format:
 {{
     "title": "Master Career Roadmap",
-    "description": "A comprehensive roadmap combining goals for: [list job titles]",
-    "total_estimated_weeks": <number>,
+    "description": "A comprehensive 3-week roadmap combining goals for: [list job titles]",
+    "total_estimated_weeks": 3,
     "skill_categories": [
         {{
             "category": "Category Name",
@@ -225,8 +333,11 @@ Return ONLY valid JSON in this exact format:
                     "name": "Skill Name",
                     "priority": "high" | "medium" | "low",
                     "appears_in_jobs": ["Job Title 1", "Job Title 2"],
-                    "estimated_weeks": <number>,
-                    "resources": ["resource 1", "resource 2"]
+                    "estimated_days": <number between 1-5>,
+                    "resources": [
+                        {{"name": "Resource Name", "url": "https://..."}},
+                        {{"name": "YouTube Tutorial", "url": "https://youtube.com/..."}}
+                    ]
                 }}
             ]
         }}
@@ -234,13 +345,35 @@ Return ONLY valid JSON in this exact format:
     "learning_path": [
         {{
             "phase": 1,
-            "title": "Phase Title",
-            "duration_weeks": <number>,
+            "title": "Week 1: Foundation",
+            "duration_days": 7,
             "skills": ["skill1", "skill2"],
-            "milestone": "What you'll achieve"
+            "milestone": "What you'll achieve",
+            "daily_plan": [
+                {{"day": 1, "focus": "Topic", "resources": [{{"name": "...", "url": "..."}}]}}
+            ]
+        }},
+        {{
+            "phase": 2,
+            "title": "Week 2: Practice",
+            "duration_days": 7,
+            "skills": ["skill3", "skill4"],
+            "milestone": "What you'll achieve",
+            "daily_plan": []
+        }},
+        {{
+            "phase": 3,
+            "title": "Week 3: Projects & Interview Prep",
+            "duration_days": 7,
+            "skills": ["skill5", "skill6"],
+            "milestone": "What you'll achieve",
+            "daily_plan": []
         }}
     ],
     "combined_missing_skills": ["skill1", "skill2", "skill3"],
+    "all_resources": [
+        {{"skill": "Skill Name", "resources": [{{"name": "...", "url": "..."}}]}}
+    ],
     "source_jobs": [
         {{
             "title": "Job Title",

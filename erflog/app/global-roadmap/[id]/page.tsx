@@ -312,13 +312,25 @@ export default function GlobalRoadmapPage() {
                                     <div className="mt-2">
                                       <p className="text-xs text-secondary mb-1">Resources:</p>
                                       <div className="flex flex-wrap gap-1">
-                                        {skill.resources.map((resource, rIdx) => (
-                                          <span
-                                            key={rIdx}
-                                            className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded"
-                                          >
-                                            {resource}
-                                          </span>
+                                        {skill.resources.map((resource: any, rIdx: number) => (
+                                          typeof resource === 'string' ? (
+                                            <span
+                                              key={rIdx}
+                                              className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded"
+                                            >
+                                              {resource}
+                                            </span>
+                                          ) : (
+                                            <a
+                                              key={rIdx}
+                                              href={resource.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded hover:bg-blue-100 transition-colors"
+                                            >
+                                              {resource.name || resource.url}
+                                            </a>
+                                          )
                                         ))}
                                       </div>
                                     </div>
@@ -382,6 +394,45 @@ export default function GlobalRoadmapPage() {
                 ))}
               </div>
             </div>
+
+            {/* All Resources Section */}
+            {merged_graph.all_resources && merged_graph.all_resources.length > 0 && (
+              <div className="bg-white rounded-xl border border-surface p-5">
+                <h3 className="font-serif-bold text-lg text-ink mb-4 flex items-center gap-2">
+                  <BookOpen className="w-5 h-5" style={{ color: "#D95D39" }} />
+                  Learning Resources
+                </h3>
+                <div className="space-y-4">
+                  {merged_graph.all_resources.map((item: any, idx: number) => (
+                    <div key={idx} className="border-b border-surface pb-3 last:border-0 last:pb-0">
+                      <p className="font-medium text-ink text-sm mb-2">{item.skill}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {item.resources?.map((resource: any, rIdx: number) => (
+                          typeof resource === 'string' ? (
+                            <span
+                              key={rIdx}
+                              className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded"
+                            >
+                              {resource}
+                            </span>
+                          ) : resource?.url ? (
+                            <a
+                              key={rIdx}
+                              href={resource.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                            >
+                              📚 {resource.name || resource.url}
+                            </a>
+                          ) : null
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Quick Actions */}
             <div className="bg-white rounded-xl border border-surface p-5">

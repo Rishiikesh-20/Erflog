@@ -16,12 +16,35 @@ interface JobCardProps {
   link?: string;
   roadmap_details?: {
     missing_skills?: string[];
+    graph?: object;
+    resources?: object;
+    [key: string]: unknown;
+  };
+  // Full job data for complete save
+  fullJobData?: {
+    roadmap?: object;
+    application_text?: object;
+    summary?: string;
+    location?: string;
+    platform?: string;
+    source?: string;
+    type?: string;
+    needs_improvement?: boolean;
     [key: string]: unknown;
   };
   isSaved?: boolean;
   onAnalyzeGap?: (id: string) => void;
   onDeploy?: (id: string) => void;
-  onSave?: (job: { id: string; title: string; company: string; description?: string; link?: string; score: number; roadmap_details?: object }) => void;
+  onSave?: (job: { 
+    id: string; 
+    title: string; 
+    company: string; 
+    description?: string; 
+    link?: string; 
+    score: number; 
+    roadmap_details?: object;
+    full_job_data?: object;
+  }) => void;
   onUnsave?: (id: string) => void;
 }
 
@@ -34,6 +57,7 @@ export default function JobCard({
   description,
   link,
   roadmap_details,
+  fullJobData,
   isSaved = false,
   onAnalyzeGap,
   onDeploy,
@@ -79,6 +103,7 @@ export default function JobCard({
           link,
           score: matchScore,
           roadmap_details,
+          full_job_data: fullJobData,
         });
         setSaved(true);
       }
@@ -101,19 +126,19 @@ export default function JobCard({
         <button
           onClick={handleSaveToggle}
           disabled={saving}
-          className={`p-2 rounded-full transition-all duration-200 ${
+          className={`p-2.5 rounded-full transition-all duration-200 ${
             saved 
               ? 'bg-[#D95D39] text-white' 
               : 'bg-white/80 text-gray-600 hover:bg-[#D95D39] hover:text-white'
-          } shadow-sm`}
+          } shadow-md`}
           title={saved ? 'Remove from saved' : 'Save job'}
         >
           {saving ? (
-            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
           ) : saved ? (
-            <BookmarkCheck className="w-4 h-4" />
+            <BookmarkCheck className="w-6 h-6" />
           ) : (
-            <Bookmark className="w-4 h-4" />
+            <Bookmark className="w-6 h-6" />
           )}
         </button>
         <Badge variant="score" score={matchScore} />

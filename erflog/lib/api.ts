@@ -863,8 +863,25 @@ export interface SavedJob {
   score?: number;
   roadmap_details?: {
     missing_skills?: string[];
+    graph?: {
+      nodes?: Array<{
+        id: string;
+        label: string;
+        day: number;
+        type: string;
+        description: string;
+      }>;
+      edges?: Array<{ source: string; target: string }>;
+    };
+    resources?: Record<string, Array<{ name: string; url: string }>>;
+    full_job_data?: {
+      roadmap?: object;
+      application_text?: object;
+      [key: string]: unknown;
+    };
     [key: string]: unknown;
   };
+  progress?: Record<string, { completed: boolean; updated_at: string }>;
   created_at: string;
 }
 
@@ -876,8 +893,18 @@ export interface SaveJobRequest {
   description?: string;
   link?: string;
   score?: number;
-  roadmap_details?: object;
-}
+  roadmap_details?: object;  // Full job data for complete save
+  full_job_data?: {
+    roadmap?: object;
+    application_text?: object;
+    summary?: string;
+    location?: string;
+    platform?: string;
+    source?: string;
+    type?: string;
+    needs_improvement?: boolean;
+    [key: string]: unknown;
+  };}
 
 export interface GlobalRoadmap {
   id: string;
@@ -893,7 +920,7 @@ export interface GlobalRoadmap {
         priority: string;
         appears_in_jobs?: string[];
         estimated_weeks?: number;
-        resources?: string[];
+        resources?: string[] | Array<{name: string; url: string}>;
       }>;
     }>;
     learning_path?: Array<{
@@ -904,6 +931,10 @@ export interface GlobalRoadmap {
       milestone: string;
     }>;
     combined_missing_skills?: string[];
+    all_resources?: Array<{
+      skill: string;
+      resources: Array<{name: string; url: string} | string>;
+    }>;
     source_jobs?: Array<{
       title: string;
       company: string;
@@ -977,6 +1008,41 @@ export async function getGlobalRoadmap(roadmapId: string): Promise<GlobalRoadmap
  */
 export async function deleteGlobalRoadmap(roadmapId: string): Promise<{ status: string; message: string }> {
   const response = await api.delete(`/api/saved-jobs/global-roadmap/${roadmapId}`);
+  return response.data;
+}
+
+// =============================================================================
+// Progress Tracking
+// =============================================================================
+
+export interface ProgressUpdate {
+  node_id: string;
+  completed: boolean;
+}
+
+export interface ProgressResponse {
+  progress: Record<string, { completed: boolean; updated_at: string }>;
+  total_nodes: number;
+  completed_nodes: number;
+  completion_percentage: number;
+}
+
+/**
+ * Update progress on a roadmap node
+ */
+export async function updateProgress(jobId: string, nodeId: string, completed: boolean): Promise<{ status: string; progress: object; message: string }> {
+  const response = await api.put(`/api/saved-jobs/progress/${jobId}`, {
+    node_id: nodeId,
+    completed
+  });
+  return response.data;
+}
+
+/**
+ * Get progress for a saved job
+ */
+export async function getProgress(jobId: string): Promise<ProgressResponse> {
+  const response = await api.get<ProgressResponse>(`/api/saved-jobs/progress/${jobId}`);
   return response.data;
 }
 

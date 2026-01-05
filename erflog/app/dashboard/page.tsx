@@ -55,6 +55,14 @@ interface JobMatch {
   gapSkills?: string[];
   description?: string;
   link?: string;
+  // Full job data for saving
+  roadmap?: object;
+  application_text?: object;
+  summary?: string;
+  platform?: string;
+  source?: string;
+  type?: string;
+  needs_improvement?: boolean;
 }
 
 interface StrategyJobMatch {
@@ -501,6 +509,7 @@ export default function Dashboard() {
         link: job.link || "",
         score: job.score / 100, // Convert back to 0-1 scale
         roadmap_details: job.roadmap_details || null,
+        full_job_data: job.full_job_data || null,
       });
       setSavedJobIds(prev => new Set([...prev, job.id]));
     } catch (err) {
@@ -530,23 +539,53 @@ export default function Dashboard() {
     }
   }, [user?.id]);
 
-  // Combine insights jobs and strategy jobs if needed
+  // Fetch full job data with roadmaps
   useEffect(() => {
-    if (insights?.top_jobs) {
-        // If strategy returns jobs, use those, otherwise fall back to insights
-        // For now, mapping insights to JobMatch format for the unified grid
-        const mapped = insights.top_jobs.map(j => ({
+    const fetchFullJobs = async () => {
+      if (!isAuthenticated) return;
+      try {
+        const data = await api.getTodayJobs();
+        const mapped = (data.jobs || []).map((job: any) => ({
+          id: job.id || String(Math.random()),
+          title: job.title,
+          company: job.company,
+          matchScore: Math.round(job.score * 100),
+          location: job.location || "Remote",
+          skills: job.roadmap?.missing_skills || [],
+          description: job.summary || job.description,
+          link: job.link,
+          // Full job data for saving
+          roadmap: job.roadmap || null,
+          application_text: job.application_text || null,
+          summary: job.summary,
+          platform: job.platform,
+          source: job.source,
+          type: job.type,
+          needs_improvement: job.needs_improvement,
+        }));
+        setJobs(mapped);
+      } catch (err) {
+        console.error("Failed to fetch full jobs:", err);
+        // Fallback to insights if full jobs fail
+        if (insights?.top_jobs) {
+          const mapped = insights.top_jobs.map(j => ({
             id: j.id,
             title: j.title,
             company: j.company,
             matchScore: j.match_score,
-            location: "Remote", // Defaulting as example
+            location: "Remote",
             skills: j.key_skills,
             postedDate: "Recent"
-        }));
-        setJobs(mapped);
+          }));
+          setJobs(mapped);
+        }
+      }
+    };
+    
+    if (isAuthenticated && !authLoading) {
+      fetchFullJobs();
     }
-  }, [insights]);
+  }, [isAuthenticated, authLoading, insights]);
 
 
   const handleAgentComplete = () => {
@@ -830,6 +869,17 @@ export default function Dashboard() {
                     matchScore={job.matchScore}
                     description={job.description}
                     link={job.link}
+                    roadmap_details={job.roadmap}
+                    fullJobData={{
+                      roadmap: job.roadmap,
+                      application_text: job.application_text,
+                      summary: job.summary,
+                      location: job.location,
+                      platform: job.platform,
+                      source: job.source,
+                      type: job.type,
+                      needs_improvement: job.needs_improvement,
+                    }}
                     isSaved={savedJobIds.has(job.id)}
                     onSave={handleSaveJob}
                     onUnsave={handleUnsaveJob}
