@@ -860,7 +860,7 @@ export default function Dashboard() {
 
              <div className="space-y-4">
               {jobs.length > 0 ? (
-                jobs.map((job) => (
+                jobs.slice(0, 3).map((job) => (
                   <JobCard 
                     key={job.id}
                     id={job.id}
@@ -891,6 +891,17 @@ export default function Dashboard() {
                 <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
                   <p className="text-gray-500">No job matches found yet.</p>
                 </div>
+              )}
+              
+              {/* View All Jobs Button */}
+              {jobs.length > 3 && (
+                <button
+                  onClick={() => router.push("/jobs")}
+                  className="w-full mt-4 py-3 px-4 bg-surface hover:bg-gray-100 rounded-xl border border-gray-200 text-secondary hover:text-ink font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  View All {jobs.length} Jobs
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               )}
              </div>
           </div>
