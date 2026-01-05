@@ -355,6 +355,7 @@ async def complete_onboarding(
             experience_summary=request.experience_summary,
             github_url=request.github_url,
             linkedin_url=request.linkedin_url,
+            leetcode_url=request.leetcode_url,
             has_resume=request.has_resume
         )
         
