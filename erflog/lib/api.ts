@@ -97,6 +97,7 @@ export interface OnboardingCompleteRequest {
   experience_summary?: string;
   github_url?: string;
   linkedin_url?: string;
+  leetcode_url?: string;
   has_resume: boolean;
 }
 
@@ -395,6 +396,25 @@ export interface ApiError {
 }
 
 // ============================================================================
+// Auto-Apply Types (Agent 4 Browser Automation)
+// ============================================================================
+
+export interface AutoApplyRequest {
+  job_url: string;
+  user_data: Record<string, string>;
+  user_id?: string;
+  resume_path?: string;
+  resume_url?: string;
+}
+
+export interface AutoApplyResponse {
+  success: boolean;
+  job_url: string;
+  message: string;
+  details?: string;
+}
+
+// ============================================================================
 // API Functions
 // ============================================================================
 // (Keeping all existing functions standard)
@@ -508,6 +528,22 @@ export async function generateTailoredResume(
     job_id: jobId,
   });
   return response.data as GenerateTailoredResumeResponse;
+}
+
+/**
+ * Auto-fill a job application form using browser automation.
+ * Opens a visible browser, clicks Apply, and fills form fields.
+ * Does NOT submit - user must review and submit manually.
+ */
+export async function autoApplyToJob(
+  jobUrl: string,
+  userData: Record<string, string>
+): Promise<AutoApplyResponse> {
+  const response = await api.post<AutoApplyResponse>("/agent4/auto-apply", {
+    job_url: jobUrl,
+    user_data: userData,
+  });
+  return response.data;
 }
 
 export async function generateKit(
@@ -952,6 +988,99 @@ export async function updatePrimaryResume(file: File): Promise<{
 
   const response = await api.put("/api/perception/settings/resume", formData, {
     headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+}
+
+// ============================================================================
+// LeetCode Problem Solving API Functions
+// ============================================================================
+
+export interface LeetCodeProblem {
+  id: number;
+  title: string;
+  slug: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  category: string;
+  leetcode_url: string;
+  priority: number;
+}
+
+export interface LeetCodeCategory {
+  name: string;
+  icon: string;
+  color: string;
+  problems: LeetCodeProblem[];
+}
+
+export interface LeetCodeProblemsResponse {
+  categories: LeetCodeCategory[];
+  total_count: number;
+}
+
+export interface LeetCodeRecommendRequest {
+  quiz_answers: Record<string, string>;
+  leetcode_profile?: {
+    total_solved?: number;
+    easy_solved?: number;
+    medium_solved?: number;
+    hard_solved?: number;
+    ranking?: number;
+  };
+  solved_problem_ids?: number[];
+}
+
+export interface LeetCodeRecommendResponse {
+  recommended_ids: number[];
+  source: string;
+  reasoning?: string;
+}
+
+export interface LeetCodeProgressResponse {
+  solved_problem_ids: number[];
+  quiz_answers: Record<string, string>;
+  total_solved: number;
+}
+
+/**
+ * Get all Blind 75 problems organized by category
+ */
+export async function getLeetCodeProblems(): Promise<LeetCodeProblemsResponse> {
+  const response = await api.get<LeetCodeProblemsResponse>("/api/leetcode/problems");
+  return response.data;
+}
+
+/**
+ * Get AI-powered problem recommendations
+ */
+export async function getLeetCodeRecommendations(
+  request: LeetCodeRecommendRequest
+): Promise<LeetCodeRecommendResponse> {
+  const response = await api.post<LeetCodeRecommendResponse>(
+    "/api/leetcode/recommend",
+    request
+  );
+  return response.data;
+}
+
+/**
+ * Get user's LeetCode progress
+ */
+export async function getLeetCodeProgress(): Promise<LeetCodeProgressResponse> {
+  const response = await api.get<LeetCodeProgressResponse>("/api/leetcode/progress");
+  return response.data;
+}
+
+/**
+ * Save user's LeetCode progress
+ */
+export async function saveLeetCodeProgress(
+  solvedProblemIds: number[],
+  quizAnswers?: Record<string, string>
+): Promise<LeetCodeProgressResponse> {
+  const response = await api.post<LeetCodeProgressResponse>("/api/leetcode/progress", {
+    solved_problem_ids: solvedProblemIds,
+    quiz_answers: quizAnswers,
   });
   return response.data;
 }
