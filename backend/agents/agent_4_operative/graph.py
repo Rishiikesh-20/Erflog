@@ -35,7 +35,7 @@ def mutate_node(state: Agent4State) -> dict:
     result = mutate_resume_for_job(user_id, job_description)
     
     return {
-        "rewritten_content": result.get("replacements", []),
+        "rewritten_content": {},  # Content is baked into the PDF, no separate dict needed
         "pdf_url": result.get("pdf_url", ""),
         "pdf_path": result.get("pdf_path", ""),
         "application_status": "ready" if result.get("status") == "success" else "pending"

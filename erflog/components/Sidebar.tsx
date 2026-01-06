@@ -2,18 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import {
-  Home,
   Target,
   Settings,
   LayoutDashboard,
   Bot,
   MessageCircle,
+  Mic,
+  MessageSquare,
+  Trophy,
+  User,
   Code,
+  Bookmark,
 } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { userMetadata, isAuthenticated } = useAuth();
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -42,25 +49,6 @@ export default function Sidebar() {
       {/* Navigation Links */}
       <nav className="flex-1 px-4 py-6">
         <ul className="space-y-2">
-          {/* Nexus / Home */}
-          <li>
-            <Link
-              href="/"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${pathname === "/"
-                  ? "bg-accent text-surface"
-                  : "text-ink hover:bg-surface"
-                }`}
-              style={
-                pathname === "/"
-                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
-                  : { color: "#1A1A1A" }
-              }
-            >
-              <Home size={20} />
-              Nexus
-            </Link>
-          </li>
-
           {/* Dashboard */}
           <li>
             <Link
@@ -95,30 +83,51 @@ export default function Sidebar() {
               }
             >
               <Target size={20} />
-              Strategy Board
+              My Jobs
             </Link>
           </li>
 
-          {/* Interview Practice */}
+          {/* Hackathons */}
           <li>
             <Link
-              href="/interview"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isActive("/interview")
+              href="/hackathons"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                isActive("/hackathons")
                   ? "bg-accent text-surface"
                   : "text-ink hover:bg-surface"
                 }`}
               style={
-                isActive("/interview")
+                isActive("/hackathons")
                   ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
                   : { color: "#1A1A1A" }
               }
             >
-              <MessageCircle size={20} />
-              Interview Prep
+              <Trophy size={20} />
+              Hackathons
             </Link>
           </li>
 
-          {/* Problem Solving */}
+          {/* Saved Jobs */}
+          <li>
+            <Link
+              href="/saved-jobs"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                isActive("/saved-jobs") || isActive("/global-roadmap")
+                  ? "bg-accent text-surface"
+                  : "text-ink hover:bg-surface"
+              }`}
+              style={
+                isActive("/saved-jobs") || isActive("/global-roadmap")
+                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
+                  : { color: "#1A1A1A" }
+              }
+            >
+              <Bookmark size={20} />
+              Saved Jobs
+            </Link>
+          </li>
+
+          {/* Interview Practice */}
           <li>
             <Link
               href="/problem-solving"
@@ -152,7 +161,7 @@ export default function Sidebar() {
               }
             >
               <Settings size={20} />
-              Evolution
+              Settings
             </Link>
           </li>
         </ul>
@@ -164,13 +173,32 @@ export default function Sidebar() {
         style={{ borderColor: "#E5E0D8" }}
       >
         <div className="flex items-center gap-3">
-          <div
-            className="h-10 w-10 rounded-full"
-            style={{ backgroundColor: "#E5E0D8" }}
-          />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-ink">User</p>
-            <p className="text-xs text-secondary">Active</p>
+          {userMetadata.avatarUrl ? (
+            <Image
+              src={userMetadata.avatarUrl}
+              alt={userMetadata.fullName || "User"}
+              width={40}
+              height={40}
+              className="rounded-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div
+              className="h-10 w-10 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "#E5E0D8" }}
+            >
+              <User size={20} className="text-gray-500" />
+            </div>
+          )}
+          <div className="flex-1 overflow-hidden">
+            <p className="text-sm font-medium text-ink truncate">
+              {userMetadata.fullName || "User"}
+            </p>
+            <p className="text-xs text-secondary truncate">
+              {isAuthenticated
+                ? userMetadata.email || "Active"
+                : "Not signed in"}
+            </p>
           </div>
         </div>
       </div>

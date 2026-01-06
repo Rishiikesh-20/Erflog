@@ -8,6 +8,7 @@ import React, {
   useCallback,
   ReactNode,
 } from "react";
+import { createClient, Session } from "@supabase/supabase-js";
 import * as api from "./api";
 import {
   UserProfile,
@@ -15,6 +16,11 @@ import {
   MatchResponse,
   Strategy,
 } from "./api";
+
+// Supabase client initialization
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // 1. Define the Shape of the Context
 interface SessionContextType {
@@ -24,6 +30,10 @@ interface SessionContextType {
   error: string | null;
   strategyJobs: StrategyJobMatch[];
   isApiHealthy: boolean;
+
+  // Supabase Auth
+  session: Session | null;
+  accessToken: string | null;
 
   // Actions
   initialize: () => Promise<string | null>;
@@ -35,6 +45,7 @@ interface SessionContextType {
   runStrategy: (query?: string, forceRefresh?: boolean) => Promise<boolean>;
   clearError: () => void;
   resetSession: () => void;
+  signOut: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -61,6 +72,29 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isApiHealthy, setIsApiHealthy] = useState<boolean>(true);
+  
+  // Supabase Auth State
+  const [session, setSession] = useState<Session | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  // Load Supabase session on mount
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAccessToken(session?.access_token || null);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setAccessToken(session?.access_token || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Load session from localStorage on mount
   useEffect(() => {
@@ -190,6 +224,13 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
     setError(null);
   }, []);
 
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setAccessToken(null);
+    resetSession();
+  }, [resetSession]);
+
   const value = {
     sessionId,
     profile,
@@ -197,12 +238,15 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
     error,
     strategyJobs,
     isApiHealthy,
+    session,
+    accessToken,
     initialize,
     checkHealth,
     uploadUserResume,
     runStrategy,
     clearError,
     resetSession,
+    signOut,
   };
 
   return (

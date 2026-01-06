@@ -1,8 +1,11 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from datetime import datetime
+import httpx
+import tempfile
 
 from .schemas import (
     GenerateResumeRequest,
+    GenerateResumeAuthenticatedRequest,
     GenerateResumeByProfileIdRequest,
     AnalyzeRejectionRequest,
     GenerateApplicationResponsesRequest,
@@ -10,14 +13,26 @@ from .schemas import (
     AnalyzeRejectionResponse,
     GenerateApplicationResponsesResponse,
     HealthResponse,
-    ErrorResponse
+    ErrorResponse,
+    AtsRequest,
+    AtsScoreResponse,
+    AutoApplyRequest,
+    AutoApplyResponse
 )
 from .service import agent4_service
+from auth.dependencies import get_current_user
+from .tools import calculate_ats_score, run_auto_apply, analyze_rejection
 
 
 agent4_router = APIRouter(
     prefix="/agent4",
     tags=["Agent 4 - Application Operative"]
+)
+
+# Secondary router for /api/operative prefix
+operative_router = APIRouter(
+    prefix="/api/operative",
+    tags=["Agent 4 - Operative APIs"]
 )
 
 
@@ -37,26 +52,43 @@ async def health_check():
     response_model=GenerateResumeResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
 )
-async def generate_resume(request: GenerateResumeRequest):
+async def generate_resume_authenticated(
+    request: GenerateResumeAuthenticatedRequest,
+    user: dict = Depends(get_current_user)
+):
     """
-    Generate an ATS-optimized resume for a user targeting a specific job.
+    Generate an ATS-optimized resume for the authenticated user targeting a specific job.
     
-    - Fetches user profile from Supabase using user_id (UUID)
+    - Uses JWT token to identify user
     - Sends profile + job description to Gemini for optimization
-    - Generates a PDF resume
-    - Returns optimized resume data and PDF path
+    - Generates a PDF resume using LaTeX
+    - Uploads to Supabase storage
+    - Returns optimized resume URL
     """
     try:
+        user_id = user.get("sub") or user.get("user_id")
+        print(f"🎯 [Agent 4] Generate resume for user: {user_id}")
+        
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in token")
+        
         result = agent4_service.generate_resume(
-            user_id=request.user_id,
+            user_id=user_id,
             job_description=request.job_description,
             job_id=request.job_id
         )
+        
+        print(f"📝 [Agent 4] Service result: {result.get('success')}, pdf_url: {result.get('pdf_url', 'N/A')[:50] if result.get('pdf_url') else 'None'}")
+        
         return GenerateResumeResponse(**result)
     
     except ValueError as e:
+        print(f"❌ [Agent 4] ValueError: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        import traceback
+        print(f"❌ [Agent 4] Exception: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
@@ -88,20 +120,25 @@ async def generate_resume_by_profile_id(request: GenerateResumeByProfileIdReques
     response_model=AnalyzeRejectionResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
 )
-async def analyze_rejection(request: AnalyzeRejectionRequest):
+async def analyze_rejection_endpoint(request: AnalyzeRejectionRequest):
     """
-    Analyze why a resume was rejected and update the learning loop.
+    Analyze why a resume was rejected using Agent 4's analytical tool.
     
     - Identifies skill gaps and mismatches
-    - Creates anti-pattern vectors in Pinecone
     - Returns actionable recommendations
     """
     try:
-        result = agent4_service.analyze_rejection(
-            user_id=request.user_id,
+        # Call the new async tool directly
+        result = await analyze_rejection(
+            user_id=str(request.user_id), # Ensure UUID is converted to string
             job_description=request.job_description,
-            rejection_reason=request.rejection_reason
+            rejection_input=request.rejection_reason # Map 'reason' from schema to 'input' arg
         )
+        
+        # Check if tool returned an internal error dict
+        if "error" in result:
+             raise HTTPException(status_code=404, detail=result["error"])
+
         return AnalyzeRejectionResponse(**result)
     
     except ValueError as e:
@@ -143,3 +180,169 @@ async def generate_application_responses(request: GenerateApplicationResponsesRe
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+# =============================================================================
+# ATS SCORING & AUTO-APPLY ENDPOINTS
+# =============================================================================
+
+@agent4_router.post(
+    "/ats-score",
+    response_model=AtsScoreResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+)
+async def ats_score_endpoint(request: AtsRequest):
+    """
+    Calculate ATS (Applicant Tracking System) compatibility score for a resume.
+    
+    - Analyzes resume text for ATS-friendly formatting
+    - Identifies missing keywords and skills
+    - Returns a score from 0-100 with recommendations
+    """
+    try:
+        result = await calculate_ats_score(resume_text=request.resume_text)
+        return AtsScoreResponse(
+            success=True,
+            score=result["score"],
+            missing_keywords=result["missing_keywords"],
+            summary=result["summary"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ATS analysis failed: {str(e)}")
+
+
+@agent4_router.post(
+    "/auto-apply",
+    response_model=AutoApplyResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+)
+async def auto_apply_endpoint(request: AutoApplyRequest):
+    """
+    Auto-fill a job application form using browser automation.
+    
+    - Opens the job URL in a visible browser
+    - Clicks the Apply button
+    - Fills form fields with provided user data
+    - Uploads resume from Supabase (user_id), local path, or URL
+    - Does NOT submit the form
+    - User should review and submit manually
+    """
+    try:
+        from .tools import download_file
+        
+        # Handle resume: priority is user_id > resume_path > resume_url
+        resume_file_path = None
+        
+        if request.user_id:
+            # Fetch resume from Supabase storage using user_id
+            try:
+                resume_file_path = download_file(request.user_id, f"{request.user_id}.pdf")
+                print(f"📄 Downloaded resume from Supabase: {resume_file_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to download resume from Supabase: {e}")
+        
+        if not resume_file_path and request.resume_path:
+            resume_file_path = request.resume_path
+        
+        if not resume_file_path and request.resume_url:
+            # Download resume from URL to temp file
+            async with httpx.AsyncClient() as client:
+                response = await client.get(request.resume_url)
+                if response.status_code == 200:
+                    ext = ".pdf"
+                    if ".docx" in request.resume_url.lower():
+                        ext = ".docx"
+                    elif ".doc" in request.resume_url.lower():
+                        ext = ".doc"
+                    
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    resume_file_path = temp_file.name
+        
+        result = await run_auto_apply(
+            job_url=request.job_url,
+            user_data=request.user_data,
+            user_id=request.user_id,
+            resume_path=resume_file_path
+        )
+        return AutoApplyResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Auto-apply failed: {str(e)}")
+
+
+# =============================================================================
+# OPERATIVE ROUTER ENDPOINTS (Alternative prefix: /api/operative)
+# =============================================================================
+
+@operative_router.post(
+    "/ats-score",
+    response_model=AtsScoreResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+)
+async def operative_ats_score(request: AtsRequest):
+    """
+    Calculate ATS compatibility score for a resume.
+    Alternative endpoint with /api/operative prefix.
+    """
+    try:
+        result = await calculate_ats_score(resume_text=request.resume_text)
+        return AtsScoreResponse(
+            success=True,
+            score=result["score"],
+            missing_keywords=result["missing_keywords"],
+            summary=result["summary"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ATS analysis failed: {str(e)}")
+
+
+@operative_router.post(
+    "/auto-apply",
+    response_model=AutoApplyResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+)
+async def operative_auto_apply(request: AutoApplyRequest):
+    """
+    Auto-fill a job application form using browser automation.
+    Alternative endpoint with /api/operative prefix.
+    """
+    try:
+        from .tools import download_file
+        
+        # Handle resume: priority is user_id > resume_path > resume_url
+        resume_file_path = None
+        
+        if request.user_id:
+            try:
+                resume_file_path = download_file(request.user_id, f"{request.user_id}.pdf")
+            except Exception as e:
+                print(f"⚠️ Failed to download resume from Supabase: {e}")
+        
+        if not resume_file_path and request.resume_path:
+            resume_file_path = request.resume_path
+        
+        if not resume_file_path and request.resume_url:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(request.resume_url)
+                if response.status_code == 200:
+                    ext = ".pdf"
+                    if ".docx" in request.resume_url.lower():
+                        ext = ".docx"
+                    elif ".doc" in request.resume_url.lower():
+                        ext = ".doc"
+                    
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    resume_file_path = temp_file.name
+        
+        result = await run_auto_apply(
+            job_url=request.job_url,
+            user_data=request.user_data,
+            user_id=request.user_id,
+            resume_path=resume_file_path
+        )
+        return AutoApplyResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Auto-apply failed: {str(e)}")

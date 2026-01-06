@@ -1,111 +1,110 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "@/lib/SessionContext";
-import { generateKit, getErrorMessage } from "@/lib/api";
-import { Loader2, Download, Copy, Check, AlertCircle, ExternalLink } from "lucide-react";
+import { getTodayJobs, generateTailoredResume, autoApplyToJob, getSettingsProfile, TodayDataItem } from "@/lib/api";
+import {
+  Loader2,
+  Download,
+  Copy,
+  Check,
+  AlertCircle,
+  ExternalLink,
+  FileText,
+  Sparkles,
+  Wand2,
+  Bot,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
 
 export default function ApplyPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id as string;
-  const { profile, strategyJobs, sessionId } = useSession();
+  const { sessionId } = useSession();
 
-  // Find job from strategy jobs
-  const job = strategyJobs.find((j) => j.id === jobId) || {
-    title: "Job Position",
-    company: "Company",
-    description: "",
-  };
-
-  const [isGenerating, setIsGenerating] = useState(false);
+  // State for job data
+  const [job, setJob] = useState<TodayDataItem | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
-  const [generationSuccess, setGenerationSuccess] = useState(false);
 
-  const [formData, setFormData] = useState({
-    whyJoin: "",
-    shortDescription: "",
-    additionalInfo: "",
-  });
+  // State for resume generation
+  const [resumeUrl, setResumeUrl] = useState<string | null>(null);
+  const [isGeneratingResume, setIsGeneratingResume] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
+  // State for copied indicators
   const [copied, setCopied] = useState<string | null>(null);
 
-  const handleGenerateKit = async () => {
-    if (!profile) {
-      setError("No profile found. Please upload your resume first on the home page.");
-      return;
-    }
+  // State for auto-apply
+  const [isAutoApplying, setIsAutoApplying] = useState(false);
+  const [autoApplyResult, setAutoApplyResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
 
-    setIsGenerating(true);
-    setError(null);
-    setGeneratedPdfUrl(null);
-    setGenerationSuccess(false);
+  // State for editable form data (initialized from pre-generated)
+  const [formData, setFormData] = useState({
+    whyCompany: "",
+    whyRole: "",
+    shortIntro: "",
+    coverLetterOpening: "",
+    coverLetterBody: "",
+    coverLetterClosing: "",
+  });
 
-    try {
-      const result = await generateKit(
-        profile.name, 
-        job.title, 
-        job.company, 
-        sessionId || undefined,
-        job.description || undefined
-      );
+  // Fetch job data with pre-generated application text and resume
+  useEffect(() => {
+    const fetchJobData = async () => {
+      setLoading(true);
+      setError(null);
 
-      if (result instanceof Blob) {
-        // Direct PDF blob - download immediately
-        const url = window.URL.createObjectURL(result);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `Resume_${job.company.replace(/\s+/g, "_")}_${job.title
-          .replace(/\s+/g, "_")
-          .substring(0, 20)}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        setGenerationSuccess(true);
-      } else {
-        // JSON response - check for pdf_url
-        const jsonResult = result as { 
-          status?: string; 
-          message?: string; 
-          detail?: string;
-          data?: { 
-            pdf_url?: string; 
-            pdf_path?: string;
-          };
-        };
-        
-        if (jsonResult.status === "success" && jsonResult.data?.pdf_url) {
-          setGeneratedPdfUrl(jsonResult.data.pdf_url);
-          setGenerationSuccess(true);
+      try {
+        const response = await getTodayJobs();
+
+        if (response.status === "success" && response.jobs) {
+          // Find job by ID (handle both string and numeric formats)
+          const foundJob = response.jobs.find((j) => {
+            const jId = String(j.id).replace(".0", "");
+            const targetId = String(jobId).replace(".0", "");
+            return jId === targetId || j.id === jobId;
+          });
+
+          if (foundJob) {
+            setJob(foundJob);
+
+            // Initialize form data from pre-generated application text
+            if (foundJob.application_text) {
+              const appText = foundJob.application_text;
+              setFormData({
+                whyCompany: appText.why_this_company || "",
+                whyRole: appText.why_this_role || "",
+                shortIntro: appText.short_intro || "",
+                coverLetterOpening: appText.cover_letter_opening || "",
+                coverLetterBody: appText.cover_letter_body || "",
+                coverLetterClosing: appText.cover_letter_closing || "",
+              });
+            }
+          } else {
+            setError(
+              "Job not found. It may have been removed from today's matches."
+            );
+          }
         } else {
-          setError(jsonResult.message || jsonResult.detail || "Failed to generate resume.");
+          setError("Failed to fetch job data.");
         }
+      } catch (err) {
+        console.error("Error fetching job:", err);
+        setError("Failed to load job details. Please try again.");
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      const errorMsg = getErrorMessage(err);
-      if (errorMsg.includes("501") || errorMsg.includes("Not Implemented")) {
-        setError("Please upload your resume on the home page first to enable resume generation.");
-      } else {
-        setError(errorMsg);
-      }
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+    };
 
-  const handleDownloadPdf = () => {
-    if (generatedPdfUrl) {
-      // Open in new tab or trigger download
-      window.open(generatedPdfUrl, '_blank');
-    }
-  };
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+    fetchJobData();
+  }, [jobId]);
 
   const handleCopy = (field: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -113,12 +112,136 @@ export default function ApplyPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // Sample AI-generated responses
-  const generatedResponses = {
-    whyJoin: `I am excited about the opportunity to join ${job.company} because of its innovative approach to technology and commitment to excellence. The ${job.title} role aligns perfectly with my career aspirations and technical expertise. I am particularly drawn to the company's culture of continuous learning and the opportunity to work on impactful projects that make a real difference.`,
-    shortDescription: `I am a passionate software engineer with hands-on experience in building scalable applications and solving complex technical challenges. My background includes working with cross-functional teams to deliver high-quality solutions on time. I thrive in collaborative environments and am constantly seeking to expand my technical knowledge and contribute meaningfully to team success.`,
-    additionalInfo: `Throughout my career, I have demonstrated strong problem-solving abilities and a commitment to writing clean, maintainable code. I am experienced in agile methodologies and have a track record of quickly adapting to new technologies and frameworks. I am confident that my skills and enthusiasm would make me a valuable addition to the ${job.company} team.`,
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
+
+  const handleDownloadResume = () => {
+    if (resumeUrl) {
+      window.open(resumeUrl, "_blank");
+    }
+  };
+
+  const handleGenerateResume = async () => {
+    if (!job) return;
+
+    setIsGeneratingResume(true);
+    setResumeError(null);
+
+    try {
+      // Build job description for the API
+      const jobDescription = `
+Job Title: ${job.title}
+Company: ${job.company}
+
+Description:
+${job.summary || ""}
+
+Platform: ${job.platform || ""}
+Location: ${job.location || ""}
+      `.trim();
+
+      const result = await generateTailoredResume(jobDescription, job.id);
+
+      if (result.success && result.pdf_url) {
+        setResumeUrl(result.pdf_url);
+      } else {
+        setResumeError(
+          result.message || "Failed to generate resume. Please try again."
+        );
+      }
+    } catch (err) {
+      console.error("Resume generation error:", err);
+      setResumeError(
+        "Failed to generate resume. Please ensure you have uploaded your resume on the home page."
+      );
+    } finally {
+      setIsGeneratingResume(false);
+    }
+  };
+
+  const handleAutoApply = async () => {
+    if (!job || !job.link) return;
+
+    setIsAutoApplying(true);
+    setAutoApplyResult(null);
+
+    try {
+      // Get user profile for form data
+      const profileResponse = await getSettingsProfile();
+      const profile = profileResponse.profile;
+
+      // Build user data object for form filling
+      const userData: Record<string, string> = {
+        name: profile.name || "",
+        email: profile.email || "",
+        phone: "", // Not stored in profile
+        linkedin: profile.linkedin_url || "",
+        github: profile.github_url || "",
+        location: "", // Not stored in profile
+        skills: (profile.skills || []).join(", "),
+      };
+
+      const result = await autoApplyToJob(job.link, userData);
+
+      setAutoApplyResult({
+        success: result.success,
+        message: result.message,
+      });
+    } catch (err) {
+      console.error("Auto-apply error:", err);
+      setAutoApplyResult({
+        success: false,
+        message: "Failed to start auto-apply. Please try again or apply manually.",
+      });
+    } finally {
+      setIsAutoApplying(false);
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2
+            className="w-12 h-12 animate-spin"
+            style={{ color: "#D95D39" }}
+          />
+          <p className="text-secondary">Loading application kit...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !job) {
+    return (
+      <div className="min-h-screen bg-canvas py-12 px-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <AlertCircle
+            className="w-16 h-16 mx-auto mb-6"
+            style={{ color: "#D95D39" }}
+          />
+          <h1 className="font-serif-bold text-3xl text-ink mb-4">
+            Job Not Found
+          </h1>
+          <p className="text-secondary mb-8">
+            {error || "The job you're looking for is not available."}
+          </p>
+          <button
+            onClick={() => router.push("/jobs")}
+            className="px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+            style={{ backgroundColor: "#D95D39" }}
+          >
+            Browse Jobs
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const applicationText = job.application_text;
 
   return (
     <div className="min-h-screen bg-canvas py-12 px-8">
@@ -146,101 +269,121 @@ export default function ApplyPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-10">
-          <h1 className="font-serif-bold text-4xl text-ink mb-3">
-            Apply to {job.company}
-          </h1>
-          <p className="text-xl text-secondary">{job.title}</p>
+          <div className="flex items-center gap-3 mb-3">
+            <Sparkles className="w-8 h-8" style={{ color: "#D95D39" }} />
+            <h1 className="font-serif-bold text-4xl text-ink">
+              Application Kit
+            </h1>
+          </div>
+          <p className="text-xl text-secondary">
+            {job.title} at {job.company}
+          </p>
+          <p className="text-sm text-secondary mt-2">
+            Match Score:{" "}
+            <span
+              className="font-medium"
+              style={{ color: job.score >= 0.8 ? "#22c55e" : "#D95D39" }}
+            >
+              {(job.score * 100).toFixed(0)}%
+            </span>
+          </p>
         </div>
 
-        {/* Resume Download Section */}
+        {/* Tailored Resume Section */}
         <div
           className="bg-surface rounded-xl border p-8 mb-8"
           style={{ borderColor: "#E5E0D8" }}
         >
           <div className="flex items-start gap-6">
             <div
-              className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: generationSuccess ? "#22c55e" : "#D95D39" }}
+              className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: resumeUrl ? "#22c55e" : "#D95D39",
+              }}
             >
-              {generationSuccess ? (
-                <Check className="w-8 h-8 text-white" />
+              {isGeneratingResume ? (
+                <Loader2 className="w-8 h-8 text-white animate-spin" />
               ) : (
-                <Download className="w-8 h-8 text-white" />
+                <FileText className="w-8 h-8 text-white" />
               )}
             </div>
             <div className="flex-1">
               <h2 className="font-serif-bold text-2xl text-ink mb-2">
-                {generationSuccess ? "Resume Generated!" : "Your Optimized Resume"}
+                Tailored Resume
               </h2>
               <p className="text-secondary mb-6">
-                {generationSuccess 
-                  ? `Your tailored resume for ${job.company} is ready for download.`
-                  : `Generate a tailored resume highlighting the skills and experiences most relevant to this position at ${job.company}.`
-                }
+                {resumeUrl
+                  ? `Your resume has been optimized for this ${job.title} position at ${job.company}. It highlights the most relevant skills and experiences.`
+                  : `Generate a tailored resume optimized for this ${job.title} position. Our AI will rewrite your resume to highlight relevant skills and experiences.`}
               </p>
 
-              {error && (
-                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  {error}
+              {resumeError && (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+                  <p className="text-sm text-red-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {resumeError}
+                  </p>
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-3">
-                {!generationSuccess ? (
+              {resumeUrl ? (
+                <div className="flex flex-wrap gap-3">
                   <button
-                    onClick={handleGenerateKit}
-                    disabled={isGenerating || !profile}
-                    className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
-                    style={{ backgroundColor: "#D95D39" }}
+                    onClick={handleDownloadResume}
+                    className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                    style={{ backgroundColor: "#22c55e" }}
                   >
-                    {isGenerating ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <Download className="w-5 h-5" />
-                    )}
-                    {isGenerating ? "Generating..." : "Generate Tailored Resume"}
+                    <Download className="w-5 h-5" />
+                    Download Tailored Resume
                   </button>
-                ) : (
-                  <>
-                    {generatedPdfUrl && (
-                      <button
-                        onClick={handleDownloadPdf}
-                        className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
-                        style={{ backgroundColor: "#22c55e" }}
-                      >
-                        <Download className="w-5 h-5" />
-                        Download Resume PDF
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setGenerationSuccess(false);
-                        setGeneratedPdfUrl(null);
-                      }}
-                      className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50"
-                      style={{ borderColor: "#E5E0D8" }}
-                    >
-                      <Download className="w-5 h-5" />
-                      Generate New Version
-                    </button>
-                  </>
-                )}
-              </div>
+                  <a
+                    href={resumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50"
+                    style={{ borderColor: "#E5E0D8" }}
+                  >
+                    <ExternalLink className="w-5 h-5" />
+                    Open in New Tab
+                  </a>
+                  <button
+                    onClick={() => {
+                      setResumeUrl(null);
+                      setResumeError(null);
+                    }}
+                    className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50 text-secondary"
+                    style={{ borderColor: "#E5E0D8" }}
+                  >
+                    <Wand2 className="w-5 h-5" />
+                    Regenerate
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleGenerateResume}
+                  disabled={isGeneratingResume}
+                  className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: "#D95D39" }}
+                >
+                  {isGeneratingResume ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Generating Resume...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-5 h-5" />
+                      Generate Tailored Resume
+                    </>
+                  )}
+                </button>
+              )}
 
-              {generatedPdfUrl && (
-                <div className="mt-4 p-3 rounded-lg bg-green-50 border border-green-200">
-                  <p className="text-sm text-green-700 flex items-center gap-2">
-                    <Check className="w-4 h-4" />
-                    Resume saved to cloud storage
-                    <a 
-                      href={generatedPdfUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="ml-2 underline flex items-center gap-1"
-                    >
-                      Open in new tab <ExternalLink className="w-3 h-3" />
-                    </a>
+              {isGeneratingResume && (
+                <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                  <p className="text-sm text-blue-700">
+                    ⏳ This may take 15-30 seconds. We&apos;re analyzing your
+                    resume and optimizing it for this specific job...
                   </p>
                 </div>
               )}
@@ -248,142 +391,374 @@ export default function ApplyPage() {
           </div>
         </div>
 
-        {/* Application Questions Section */}
+        {/* Auto-Apply Section */}
+        {job.link && (
+          <div
+            className="bg-surface rounded-xl border p-8 mb-8"
+            style={{ borderColor: "#E5E0D8" }}
+          >
+            <div className="flex items-start gap-6">
+              <div
+                className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: autoApplyResult?.success
+                    ? "#22c55e"
+                    : isAutoApplying
+                    ? "#3b82f6"
+                    : "#8b5cf6",
+                }}
+              >
+                {isAutoApplying ? (
+                  <Loader2 className="w-8 h-8 text-white animate-spin" />
+                ) : (
+                  <Bot className="w-8 h-8 text-white" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h2 className="font-serif-bold text-2xl text-ink mb-2">
+                  Auto-Apply (Beta)
+                </h2>
+                <p className="text-secondary mb-4">
+                  Let our AI assistant open the job application page and auto-fill
+                  the form with your profile information. You&apos;ll need to review
+                  and submit manually.
+                </p>
+
+                {/* Warning Banner */}
+                <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">
+                        Important: Review Before Submitting
+                      </p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        This feature will auto-fill the application form but will
+                        NOT submit it. Always review the filled information before
+                        manually submitting your application.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Result Feedback */}
+                {autoApplyResult && (
+                  <div
+                    className={`mb-4 p-4 rounded-lg border ${
+                      autoApplyResult.success
+                        ? "bg-green-50 border-green-200"
+                        : "bg-red-50 border-red-200"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {autoApplyResult.success ? (
+                        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                      )}
+                      <p
+                        className={`text-sm ${
+                          autoApplyResult.success
+                            ? "text-green-700"
+                            : "text-red-700"
+                        }`}
+                      >
+                        {autoApplyResult.message}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Auto-Apply Button */}
+                <button
+                  onClick={handleAutoApply}
+                  disabled={isAutoApplying}
+                  className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: "#8b5cf6" }}
+                >
+                  {isAutoApplying ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Opening Browser & Filling Form...
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="w-5 h-5" />
+                      Auto-Fill Application
+                    </>
+                  )}
+                </button>
+
+                {isAutoApplying && (
+                  <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                    <p className="text-sm text-blue-700">
+                      🤖 A browser window will open on the server. The AI is
+                      navigating to the job page and filling out the application
+                      form. This may take 30-60 seconds...
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Application Responses Section */}
         <div
           className="bg-surface rounded-xl border p-8"
           style={{ borderColor: "#E5E0D8" }}
         >
-          <h2 className="font-serif-bold text-2xl text-ink mb-6">
-            Application Responses
+          <h2 className="font-serif-bold text-2xl text-ink mb-2">
+            Pre-Generated Application Responses
           </h2>
           <p className="text-secondary mb-8">
-            Use these AI-generated responses for common application questions.
-            Click the copy button to copy to clipboard, or edit as needed.
+            These responses were automatically generated based on your profile
+            and this job. Click to copy, or edit as needed before using in your
+            application.
           </p>
 
-          {/* Why do you want to join */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <label className="font-serif-bold text-lg text-ink">
-                Why do you want to join {job.company}?
-              </label>
-              <button
-                onClick={() =>
-                  handleCopy("whyJoin", formData.whyJoin || generatedResponses.whyJoin)
-                }
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                {copied === "whyJoin" ? (
-                  <>
-                    <Check className="w-4 h-4 text-green-600" />
-                    <span className="text-green-600">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    Copy
-                  </>
-                )}
-              </button>
-            </div>
-            <textarea
-              value={formData.whyJoin || generatedResponses.whyJoin}
-              onChange={(e) => handleInputChange("whyJoin", e.target.value)}
-              rows={5}
-              className="w-full px-4 py-3 rounded-lg border bg-white text-ink resize-none focus:outline-none focus:ring-2"
-              style={{ borderColor: "#E5E0D8" } as React.CSSProperties}
-            />
-          </div>
+          {applicationText ? (
+            <>
+              {/* Why this company */}
+              <ResponseField
+                label={`Why do you want to join ${job.company}?`}
+                value={formData.whyCompany}
+                fieldKey="whyCompany"
+                copied={copied}
+                onCopy={handleCopy}
+                onChange={handleInputChange}
+              />
 
-          {/* Short Description */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <label className="font-serif-bold text-lg text-ink">
-                Your Short Description
-              </label>
-              <button
-                onClick={() =>
-                  handleCopy("shortDescription", formData.shortDescription || generatedResponses.shortDescription)
-                }
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                {copied === "shortDescription" ? (
-                  <>
-                    <Check className="w-4 h-4 text-green-600" />
-                    <span className="text-green-600">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    Copy
-                  </>
-                )}
-              </button>
-            </div>
-            <textarea
-              value={formData.shortDescription || generatedResponses.shortDescription}
-              onChange={(e) => handleInputChange("shortDescription", e.target.value)}
-              rows={5}
-              className="w-full px-4 py-3 rounded-lg border bg-white text-ink resize-none focus:outline-none focus:ring-2"
-              style={{ borderColor: "#E5E0D8" } as React.CSSProperties}
-            />
-          </div>
+              {/* Why this role */}
+              <ResponseField
+                label={`Why are you interested in the ${job.title} role?`}
+                value={formData.whyRole}
+                fieldKey="whyRole"
+                copied={copied}
+                onCopy={handleCopy}
+                onChange={handleInputChange}
+              />
 
-          {/* Additional Information */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <label className="font-serif-bold text-lg text-ink">
-                Additional Information
-              </label>
-              <button
-                onClick={() =>
-                  handleCopy("additionalInfo", formData.additionalInfo || generatedResponses.additionalInfo)
-                }
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                {copied === "additionalInfo" ? (
-                  <>
-                    <Check className="w-4 h-4 text-green-600" />
-                    <span className="text-green-600">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    Copy
-                  </>
+              {/* Short Intro */}
+              <ResponseField
+                label="Elevator Pitch / Short Introduction"
+                value={formData.shortIntro}
+                fieldKey="shortIntro"
+                copied={copied}
+                onCopy={handleCopy}
+                onChange={handleInputChange}
+              />
+
+              {/* Cover Letter Opening */}
+              <ResponseField
+                label="Cover Letter - Opening Paragraph"
+                value={formData.coverLetterOpening}
+                fieldKey="coverLetterOpening"
+                copied={copied}
+                onCopy={handleCopy}
+                onChange={handleInputChange}
+              />
+
+              {/* Cover Letter Body */}
+              <ResponseField
+                label="Cover Letter - Main Body"
+                value={formData.coverLetterBody}
+                fieldKey="coverLetterBody"
+                copied={copied}
+                onCopy={handleCopy}
+                onChange={handleInputChange}
+                rows={6}
+              />
+
+              {/* Cover Letter Closing */}
+              <ResponseField
+                label="Cover Letter - Closing Paragraph"
+                value={formData.coverLetterClosing}
+                fieldKey="coverLetterClosing"
+                copied={copied}
+                onCopy={handleCopy}
+                onChange={handleInputChange}
+              />
+
+              {/* Key Achievements */}
+              {applicationText.key_achievements &&
+                applicationText.key_achievements.length > 0 && (
+                  <div className="mb-8">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="font-serif-bold text-lg text-ink">
+                        Key Achievements to Highlight
+                      </label>
+                      <button
+                        onClick={() =>
+                          handleCopy(
+                            "achievements",
+                            applicationText.key_achievements?.join("\n• ") || ""
+                          )
+                        }
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
+                      >
+                        {copied === "achievements" ? (
+                          <>
+                            <Check className="w-4 h-4 text-green-600" />
+                            <span className="text-green-600">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copy All
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <ul
+                      className="space-y-2 p-4 rounded-lg border bg-white"
+                      style={{ borderColor: "#E5E0D8" }}
+                    >
+                      {applicationText.key_achievements.map(
+                        (achievement, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-start gap-2 text-ink"
+                          >
+                            <span className="text-green-600 mt-0.5">✓</span>
+                            {achievement}
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  </div>
                 )}
-              </button>
+
+              {/* Questions for Interviewer */}
+              {applicationText.questions_for_interviewer &&
+                applicationText.questions_for_interviewer.length > 0 && (
+                  <div className="mb-8">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="font-serif-bold text-lg text-ink">
+                        Questions to Ask the Interviewer
+                      </label>
+                      <button
+                        onClick={() =>
+                          handleCopy(
+                            "questions",
+                            applicationText.questions_for_interviewer?.join(
+                              "\n• "
+                            ) || ""
+                          )
+                        }
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
+                      >
+                        {copied === "questions" ? (
+                          <>
+                            <Check className="w-4 h-4 text-green-600" />
+                            <span className="text-green-600">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copy All
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <ul
+                      className="space-y-2 p-4 rounded-lg border bg-white"
+                      style={{ borderColor: "#E5E0D8" }}
+                    >
+                      {applicationText.questions_for_interviewer.map(
+                        (question, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-start gap-2 text-ink"
+                          >
+                            <span
+                              style={{ color: "#D95D39" }}
+                              className="mt-0.5"
+                            >
+                              ?
+                            </span>
+                            {question}
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  </div>
+                )}
+            </>
+          ) : (
+            <div className="p-6 rounded-lg bg-yellow-50 border border-yellow-200 text-center">
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-600" />
+              <h3 className="font-medium text-ink mb-2">
+                Application Responses Not Yet Generated
+              </h3>
+              <p className="text-sm text-yellow-700">
+                Application responses will be generated during the next daily
+                update. Check back later or browse other jobs.
+              </p>
             </div>
-            <textarea
-              value={formData.additionalInfo || generatedResponses.additionalInfo}
-              onChange={(e) => handleInputChange("additionalInfo", e.target.value)}
-              rows={5}
-              className="w-full px-4 py-3 rounded-lg border bg-white text-ink resize-none focus:outline-none focus:ring-2"
-              style={{ borderColor: "#E5E0D8" } as React.CSSProperties}
-            />
-          </div>
+          )}
 
           {/* Tips Section */}
-          <div className="p-5 rounded-lg bg-orange-50 border" style={{ borderColor: "#D95D39" }}>
+          <div
+            className="p-5 rounded-lg bg-orange-50 border mt-6"
+            style={{ borderColor: "#D95D39" }}
+          >
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" style={{ color: "#D95D39" }} />
+              <AlertCircle
+                className="w-6 h-6 flex-shrink-0 mt-0.5"
+                style={{ color: "#D95D39" }}
+              />
               <div>
                 <h4 className="font-medium text-ink mb-1">Pro Tips</h4>
                 <ul className="text-sm text-secondary space-y-1">
-                  <li>• Personalize responses with specific examples from your experience</li>
-                  <li>• Mention specific projects or technologies that align with the job</li>
+                  <li>
+                    • Personalize responses with specific examples from your
+                    experience
+                  </li>
+                  <li>
+                    • Mention specific projects or technologies that align with
+                    the job
+                  </li>
                   <li>• Keep your responses concise but impactful</li>
-                  <li>• Research {job.company} to add company-specific details</li>
+                  <li>
+                    • Research {job.company} to add company-specific details
+                  </li>
                 </ul>
               </div>
             </div>
           </div>
         </div>
 
+        {/* External Apply Button */}
+        {job.link && (
+          <div
+            className="mt-8 p-6 bg-surface rounded-xl border text-center"
+            style={{ borderColor: "#E5E0D8" }}
+          >
+            <h3 className="font-serif-bold text-xl text-ink mb-2">
+              Ready to Apply?
+            </h3>
+            <p className="text-secondary mb-4">
+              Use your tailored resume and responses to apply on the company
+              website.
+            </p>
+            <a
+              href={job.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-3 px-8 py-4 rounded-lg font-medium text-white transition-all hover:opacity-90"
+              style={{ backgroundColor: "#D95D39" }}
+            >
+              <ExternalLink className="w-5 h-5" />
+              Apply on {job.platform || "Company Website"}
+            </a>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex gap-4 mt-8">
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push(`/jobs/${jobId}`)}
             className="flex-1 py-4 rounded-lg font-medium border transition-all hover:bg-gray-50"
             style={{ borderColor: "#E5E0D8" }}
           >
@@ -398,6 +773,57 @@ export default function ApplyPage() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Reusable Response Field Component
+function ResponseField({
+  label,
+  value,
+  fieldKey,
+  copied,
+  onCopy,
+  onChange,
+  rows = 4,
+}: {
+  label: string;
+  value: string;
+  fieldKey: string;
+  copied: string | null;
+  onCopy: (field: string, text: string) => void;
+  onChange: (field: string, value: string) => void;
+  rows?: number;
+}) {
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <label className="font-serif-bold text-lg text-ink">{label}</label>
+        <button
+          onClick={() => onCopy(fieldKey, value)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
+        >
+          {copied === fieldKey ? (
+            <>
+              <Check className="w-4 h-4 text-green-600" />
+              <span className="text-green-600">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4" />
+              Copy
+            </>
+          )}
+        </button>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(fieldKey, e.target.value)}
+        rows={rows}
+        className="w-full px-4 py-3 rounded-lg border bg-white text-ink resize-none focus:outline-none focus:ring-2"
+        style={{ borderColor: "#E5E0D8" } as React.CSSProperties}
+        placeholder="No content generated yet..."
+      />
     </div>
   );
 }

@@ -1,411 +1,313 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import DropZone from "@/components/DropZone";
-import AgentTerminal, { AgentLog } from "@/components/AgentTerminal";
-import { Sparkles, AlertCircle, Github } from "lucide-react";
-import { useSession } from "@/lib/SessionContext";
+import { motion } from "framer-motion";
+import { useAuth } from "@/lib/AuthContext";
+import { Bot, Sparkles, ArrowRight, Shield, Zap, Brain } from "lucide-react";
 
-export default function Nexus() {
+export default function HomePage() {
   const router = useRouter();
-  const {
-    initialize,
-    uploadUserResume, // NOTE: You need to update your SessionContext to accept githubUrl
-    isLoading,
-    error,
-    clearError,
-    profile,
-    sessionId,
-    checkHealth,
-    isApiHealthy,
-  } = useSession();
+  const { isAuthenticated, isLoading } = useAuth();
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [githubUrl, setGithubUrl] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
-  const [processingError, setProcessingError] = useState<string | null>(null);
-
-  // Check API health on mount (run only once)
+  // Redirect authenticated users to dashboard
   useEffect(() => {
-    checkHealth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleFileSelect = async (file: File) => {
-    setSelectedFile(file);
-    setIsProcessing(true);
-    setProcessingError(null);
-    clearError();
-
-    // Generate unique timestamp for this processing session
-    const timestamp = Date.now();
-
-    // Start with initial logs
-    setAgentLogs([
-      {
-        id: `init-${timestamp}`,
-        message: "Handshake Initiated...",
-        type: "system",
-        delay: 100,
-      },
-    ]);
-
-    try {
-      // Step 1: Initialize session
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `session-init-${timestamp}`,
-          agent: "System",
-          message: "Initializing session...",
-          type: "agent",
-          delay: 200,
-        },
-      ]);
-
-      const newSessionId = await initialize();
-
-      if (!newSessionId) {
-        throw new Error("Failed to initialize session");
-      }
-
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `session-created-${timestamp}`,
-          message: `Session created: ${newSessionId.substring(0, 8)}...`,
-          type: "status",
-          delay: 300,
-        },
-      ]);
-
-      // Step 2: Upload resume & GitHub Link
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `pdf-ingest-${timestamp}`,
-          agent: "Agent 1 (Perception)",
-          message: "Ingesting PDF Blob...",
-          type: "agent",
-          delay: 400,
-        },
-      ]);
-
-      // Log GitHub Watchdog if URL is present
-      if (githubUrl) {
-        setAgentLogs((prev) => [
-          ...prev,
-          {
-            id: `github-scan-${timestamp}`,
-            agent: "Digital Twin Watchdog",
-            message: `Scanning Codebase: ${githubUrl.split('/').slice(-2).join('/')}...`,
-            type: "agent",
-            delay: 500,
-          },
-        ]);
-      }
-
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `semantic-extract-${timestamp}`,
-          agent: "Agent 1",
-          message: "Extracting Semantic Layers...",
-          type: "agent",
-          delay: 600,
-        },
-      ]);
-
-      // Pass githubUrl to the context function
-      const uploadSuccess = await uploadUserResume(file, newSessionId, githubUrl);
-
-      if (!uploadSuccess) {
-        throw new Error("Failed to process resume");
-      }
-
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `vectorize-${timestamp}`,
-          agent: "Agent 1",
-          message: "Vectorizing User Skills (768 dimensions)...",
-          type: "agent",
-          delay: 800,
-        },
-      ]);
-      
-      if (githubUrl) {
-         setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `github-merge-${timestamp}`,
-          agent: "Agent 1",
-          message: "Merging GitHub Analysis with Resume Vector...",
-          type: "success",
-          delay: 900,
-        },
-      ]);
-      }
-
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `skill-graph-${timestamp}`,
-          message: "Skill Graph Constructed.",
-          type: "status",
-          delay: 1000,
-        },
-      ]);
-
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `identity-created-${timestamp}`,
-          message: "Identity Archetype Created.",
-          type: "success",
-          delay: 1200,
-        },
-      ]);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "An error occurred";
-      setProcessingError(errorMessage);
-      setAgentLogs((prev) => [
-        ...prev,
-        {
-          id: `error-${timestamp}`,
-          message: `Error: ${errorMessage}`,
-          type: "system",
-          delay: 500,
-        },
-      ]);
+    if (isAuthenticated && !isLoading) {
+      router.push("/dashboard");
     }
-  };
+  }, [isAuthenticated, isLoading, router]);
 
-  const handleAgentComplete = () => {
-    // Only navigate if processing was successful
-    if (!processingError && profile) {
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 500);
-    }
-  };
-
-  const handleRetry = () => {
-    setIsProcessing(false);
-    setSelectedFile(null);
-    setAgentLogs([]);
-    setProcessingError(null);
-    clearError();
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F5F0]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D95D39]" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-canvas py-16 px-8 flex flex-col items-center justify-center">
-      {/* API Health Warning */}
-      {!isApiHealthy && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-100 border border-amber-300 text-amber-800"
-        >
-          <AlertCircle className="w-5 h-5" />
-          <span className="text-sm font-medium">
-            API server may be unavailable
-          </span>
-        </motion.div>
-      )}
+    <div className="min-h-screen bg-[#F7F5F0]">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-5">
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `radial-gradient(circle at 25px 25px, #D95D39 2px, transparent 0)`,
+              backgroundSize: "50px 50px",
+            }}
+          />
+        </div>
 
-      <AnimatePresence mode="wait">
-        {!isProcessing ? (
-          <motion.div
-            key="upload"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-2xl"
-          >
-            {/* Hero Section */}
-            <section className="mb-12 text-center">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.6 }}
-              >
-                <div className="flex items-center justify-center gap-3 mb-6">
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: "#D95D39" }}
-                  >
-                    <Sparkles className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-                <h1 className="font-serif-bold text-5xl md:text-6xl text-ink mb-4 leading-tight">
-                  Initialize Career Protocol
-                </h1>
-                <p className="text-lg text-secondary max-w-xl mx-auto">
-                  Upload your professional dossier to activate the agent swarm.
-                </p>
-              </motion.div>
-            </section>
-
-            {/* Error Display */}
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-center"
-              >
-                <p className="text-sm">{error}</p>
-                <button
-                  onClick={clearError}
-                  className="mt-2 text-xs underline hover:no-underline"
-                >
-                  Dismiss
-                </button>
-              </motion.div>
-            )}
-
-            {/* Upload Section */}
-            <motion.section
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="max-w-2xl mx-auto"
+        <div className="relative max-w-7xl mx-auto px-6 py-20">
+          {/* Header */}
+          <nav className="flex items-center justify-between mb-20">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-[#D95D39] rounded-xl flex items-center justify-center">
+                <Bot className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold text-xl text-gray-900">Erflog</h1>
+                <p className="text-xs text-gray-500">AI Career Platform</p>
+              </div>
+            </div>
+            <button
+              onClick={() => router.push("/login")}
+              className="flex items-center gap-2 px-6 py-3 bg-[#D95D39] text-white rounded-xl hover:bg-[#c54d2d] transition-colors font-medium"
             >
-              <div className="space-y-6">
-                
-                {/* 1. Resume Drop Zone */}
-                <div>
-                   <DropZone onFileSelect={handleFileSelect} disabled={isLoading} />
-                   <p className="text-center text-sm text-secondary mt-2">
-                    Accepted format: PDF Resume (up to 5MB)
-                  </p>
-                </div>
+              Sign In
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </nav>
 
-                {/* 2. GitHub Input (Optional) */}
-                <div className="bg-white p-4 rounded-xl border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Github className="w-4 h-4 text-ink" />
-                    <label htmlFor="github" className="text-sm font-medium text-ink">
-                      Connect GitHub (Digital Twin)
-                    </label>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-secondary">Optional</span>
-                  </div>
-                  <input
-                    type="url"
-                    id="github"
-                    placeholder="https://github.com/username/repo"
-                    value={githubUrl}
-                    onChange={(e) => setGithubUrl(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D95D39]/20 focus:border-[#D95D39] transition-all text-sm"
-                  />
-                  <p className="text-xs text-secondary mt-1.5 ml-1">
-                    The Watchdog Agent will scan your code commits to verify skills in real-time.
-                  </p>
-                </div>
-
-              </div>
-
-              {/* Session Info */}
-              {sessionId && (
-                <p className="text-center text-xs text-secondary mt-6">
-                  Active Session: {sessionId.substring(0, 8)}...
-                </p>
-              )}
-
-              {/* Feature Highlights */}
-              <div className="mt-12 grid grid-cols-3 gap-6">
-                {[
-                  { title: "Perception Agent", desc: "Semantic Analysis" },
-                  { title: "Market Agent", desc: "Job Matching" },
-                  { title: "Strategist Agent", desc: "Gap Analysis" },
-                ].map((feature, index) => (
-                  <motion.div
-                    key={feature.title}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: 0.4 + index * 0.1 }}
-                    className="text-center"
-                  >
-                    <div className="text-sm font-medium text-ink">
-                      {feature.title}
-                    </div>
-                    <div className="text-xs text-secondary mt-1">
-                      {feature.desc}
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.section>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="processing"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-2xl"
-          >
-            {/* Processing Header */}
+          {/* Hero Content */}
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-8"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
             >
-              <h2 className="font-serif-bold text-3xl text-ink mb-2">
-                {processingError
-                  ? "Processing Failed"
-                  : "Processing Your Resume"}
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#D95D39]/10 rounded-full text-[#D95D39] text-sm font-medium mb-6">
+                <Sparkles className="w-4 h-4" />
+                Powered by 6 AI Agents
+              </div>
+
+              <h2 className="text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-6">
+                Your AI Career
+                <span className="text-[#D95D39]"> Assistant</span>
+                <br />
+                Works 24/7
               </h2>
-              <p className="text-secondary">{selectedFile?.name}</p>
+
+              <p className="text-xl text-gray-600 mb-8 leading-relaxed">
+                Let our AI agents continuously monitor the job market, track
+                your GitHub activity, and find opportunities perfectly matched
+                to your skills. No more manual job hunting.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={() => router.push("/login")}
+                  className="flex items-center justify-center gap-2 px-8 py-4 bg-[#D95D39] text-white rounded-xl hover:bg-[#c54d2d] transition-colors font-medium text-lg"
+                >
+                  Get Started Free
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => router.push("/login")}
+                  className="flex items-center justify-center gap-2 px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-lg"
+                >
+                  Watch Demo
+                </button>
+              </div>
             </motion.div>
 
-            {/* Agent Terminal */}
-            <AgentTerminal
-              logs={agentLogs}
-              onComplete={handleAgentComplete}
-              title="Perception Agent v1.0"
-            />
+            {/* Agent Visualization */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="relative"
+            >
+              <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-xl">
+                <div className="flex items-center gap-3 mb-6">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{
+                      duration: 3,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                    className="w-12 h-12 bg-[#D95D39] rounded-xl flex items-center justify-center"
+                  >
+                    <Bot className="w-6 h-6 text-white" />
+                  </motion.div>
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      Multi-Agent System
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Active and monitoring
+                    </p>
+                  </div>
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span className="text-sm text-green-600">Online</span>
+                  </div>
+                </div>
 
-            {/* Error State */}
-            {processingError && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="mt-6 text-center"
-              >
-                <p className="text-red-600 mb-4">{processingError}</p>
-                <button
-                  onClick={handleRetry}
-                  className="px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
-                  style={{ backgroundColor: "#D95D39" }}
-                >
-                  Try Again
-                </button>
-              </motion.div>
-            )}
+                <div className="space-y-3">
+                  {[
+                    {
+                      name: "Agent 1: Perception",
+                      desc: "Resume & GitHub Analysis",
+                      active: true,
+                    },
+                    {
+                      name: "Agent 2: Market Sentinel",
+                      desc: "Job Market Scanning",
+                      active: true,
+                    },
+                    {
+                      name: "Agent 3: Strategist",
+                      desc: "Match & Roadmap Generation",
+                      active: true,
+                    },
+                    {
+                      name: "Agent 4: Operative",
+                      desc: "Resume Tailoring",
+                      active: false,
+                    },
+                    {
+                      name: "Agent 5: Interview Coach",
+                      desc: "Mock Interviews",
+                      active: false,
+                    },
+                    {
+                      name: "Agent 6: Chat Assistant",
+                      desc: "Interview Practice",
+                      active: false,
+                    },
+                  ].map((agent, idx) => (
+                    <motion.div
+                      key={agent.name}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.4 + idx * 0.1 }}
+                      className={`flex items-center gap-3 p-3 rounded-xl ${
+                        agent.active
+                          ? "bg-green-50 border border-green-200"
+                          : "bg-gray-50"
+                      }`}
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          agent.active ? "bg-green-500" : "bg-gray-300"
+                        }`}
+                      >
+                        <Brain className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p
+                          className={`text-sm font-medium ${
+                            agent.active ? "text-green-900" : "text-gray-600"
+                          }`}
+                        >
+                          {agent.name}
+                        </p>
+                        <p className="text-xs text-gray-500">{agent.desc}</p>
+                      </div>
+                      {agent.active && (
+                        <span className="text-xs text-green-600 font-medium">
+                          Running
+                        </span>
+                      )}
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </div>
 
-            {/* Status Text */}
-            {!processingError && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1 }}
-                className="text-center text-sm text-secondary mt-6"
-              >
-                {isLoading
-                  ? "Analyzing your professional identity..."
-                  : "Processing complete!"}
-              </motion.p>
-            )}
+      {/* Features Section */}
+      <div className="bg-white py-20">
+        <div className="max-w-7xl mx-auto px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h3 className="text-3xl font-bold text-gray-900 mb-4">
+              How Erflog Works
+            </h3>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              Our AI-powered platform automates your job search from start to
+              finish
+            </p>
           </motion.div>
-        )}
-      </AnimatePresence>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                icon: Shield,
+                title: "Smart Onboarding",
+                desc: "Upload your resume or enter your skills manually. Our AI extracts and validates your expertise.",
+              },
+              {
+                icon: Zap,
+                title: "24/7 Job Matching",
+                desc: "AI agents continuously scan the market to find jobs that match your skills and career goals.",
+              },
+              {
+                icon: Brain,
+                title: "Growth Tracking",
+                desc: "We monitor your GitHub activity to track skill development and update your profile automatically.",
+              },
+            ].map((feature, idx) => (
+              <motion.div
+                key={feature.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.1 }}
+                className="bg-gray-50 rounded-2xl p-8 hover:shadow-lg transition-shadow"
+              >
+                <div className="w-14 h-14 bg-[#D95D39]/10 rounded-xl flex items-center justify-center mb-6">
+                  <feature.icon className="w-7 h-7 text-[#D95D39]" />
+                </div>
+                <h4 className="text-xl font-semibold text-gray-900 mb-3">
+                  {feature.title}
+                </h4>
+                <p className="text-gray-600">{feature.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* CTA Section */}
+      <div className="py-20">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <h3 className="text-4xl font-bold text-gray-900 mb-6">
+              Ready to Transform Your Job Search?
+            </h3>
+            <p className="text-xl text-gray-600 mb-8">
+              Join thousands of professionals who let AI do the heavy lifting
+            </p>
+            <button
+              onClick={() => router.push("/login")}
+              className="inline-flex items-center gap-2 px-10 py-5 bg-[#D95D39] text-white rounded-xl hover:bg-[#c54d2d] transition-colors font-medium text-lg"
+            >
+              Start Your Free Account
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-12">
+        <div className="max-w-7xl mx-auto px-6 text-center">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-[#D95D39] rounded-xl flex items-center justify-center">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-xl">Erflog</span>
+          </div>
+          <p className="text-gray-400 text-sm">
+            © 2026 Erflog. AI-powered career intelligence platform.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

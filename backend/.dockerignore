@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Environment & Credentials
+.env
+.env.*
+# NOTE: credential.json is ALLOWED for Cloud Run deployment
+# credential.json  # COMMENTED OUT - needed in Docker for Cloud Run
+# backend/credential.json
+*.json.credentials
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.test.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+.DS_Store?
+._*
+
+# Logs
+*.log
+logs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Node (if frontend exists)
+node_modules/
+.next/
+out/
+npm-debug.log
+
+# Agent 4 outputs
+backend/outputs/
+debug_*.pdf
+debug_*.json
+
+# Playwright/Browser caches
+.playwright/
+playwright-report/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# Docker build artifacts
+.docker/
+.dockerignore
+Dockerfile
+
+# Misc
+.editorconfig
+.env.example
+*.pem

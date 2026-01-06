@@ -1,8 +1,17 @@
 import os
 import tempfile
+import subprocess
+import platform
 from pdf2docx import Converter
 from docx import Document
-from docx2pdf import convert
+
+# Platform-specific import for docx2pdf (only works on Windows/macOS)
+try:
+    from docx2pdf import convert as docx2pdf_convert
+    HAS_DOCX2PDF = True
+except ImportError:
+    HAS_DOCX2PDF = False
+    docx2pdf_convert = None
 import shutil
 
 class DocxSurgeon:
@@ -361,15 +370,32 @@ class DocxSurgeon:
 
     def convert_docx_to_pdf(self, docx_path: str) -> str:
         """
-        Converts DOCX back to PDF using docx2pdf (requires Word/Office).
-        Includes wait-loop to handle potential async file system lag.
+        Converts DOCX back to PDF.
+        Uses docx2pdf on Windows/macOS, LibreOffice on Linux.
         """
         import time
         pdf_path = docx_path.replace(".docx", ".pdf")
         print(f"🔄 [DocxSurgeon] Converting DOCX to PDF: {docx_path}")
         
         try:
-            convert(docx_path, pdf_path)
+            # Check platform and use appropriate method
+            if platform.system() == "Linux":
+                # Use LibreOffice for Linux/Docker
+                output_dir = os.path.dirname(docx_path)
+                result = subprocess.run([
+                    "libreoffice", "--headless", "--convert-to", "pdf",
+                    "--outdir", output_dir, docx_path
+                ], capture_output=True, text=True, timeout=60)
+                
+                if result.returncode != 0:
+                    print(f"   ❌ LibreOffice conversion failed: {result.stderr}")
+                    return None
+            elif HAS_DOCX2PDF:
+                # Use docx2pdf on Windows/macOS
+                docx2pdf_convert(docx_path, pdf_path)
+            else:
+                print("   ❌ No PDF conversion method available")
+                return None
             
             # WAIT LOOP: Ensure file exists before returning
             retries = 10

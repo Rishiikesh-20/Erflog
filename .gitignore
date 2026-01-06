@@ -45,3 +45,9 @@ env/
 node_modules/
 .next/
 out/
+
+# Credentials (NEVER commit these!)
+backend/credential.json
+credential.json
+*.json.credentials
+

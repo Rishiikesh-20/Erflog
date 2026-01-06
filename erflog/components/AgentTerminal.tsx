@@ -168,7 +168,11 @@ export default function AgentTerminal({
     const delay = currentLog.delay || 300;
 
     const timer = setTimeout(() => {
-      setVisibleLogs((prev) => [...prev, currentLog]);
+      setVisibleLogs((prev) => {
+        // Prevent duplicates if effect runs multiple times for same log
+        if (prev.some(l => l.id === currentLog.id)) return prev;
+        return [...prev, currentLog];
+      });
       setIsTypingCurrent(true);
     }, delay);
 
@@ -228,7 +232,7 @@ export default function AgentTerminal({
           <AnimatePresence>
             {visibleLogs.map((log, index) => (
               <LogLine
-                key={log.id}
+                key={`${log.id}-${index}`}
                 log={log}
                 isTyping={isTypingCurrent && index === visibleLogs.length - 1}
                 onTypingComplete={handleTypingComplete}
