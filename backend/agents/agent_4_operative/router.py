@@ -237,16 +237,24 @@ async def auto_apply_endpoint(request: AutoApplyRequest):
             # Fetch resume from Supabase storage using user_id
             try:
                 resume_file_path = download_file(request.user_id, f"{request.user_id}.pdf")
-                print(f"📄 Downloaded resume from Supabase: {resume_file_path}")
+                print(f"📄 [Router] Downloaded resume from Supabase: {resume_file_path}")
             except Exception as e:
-                print(f"⚠️ Failed to download resume from Supabase: {e}")
+                print(f"⚠️ [Router] Failed to download resume from Supabase: {e}")
+                # Try .docx extension if pdf fails
+                try:
+                    resume_file_path = download_file(request.user_id, f"{request.user_id}.docx")
+                    print(f"📄 [Router] Downloaded DOCX resume from Supabase: {resume_file_path}")
+                except:
+                    print(f"⚠️ [Router] No resume found in Supabase storage for user {request.user_id}")
         
         if not resume_file_path and request.resume_path:
             resume_file_path = request.resume_path
+            print(f"📄 [Router] Using provided resume path: {resume_file_path}")
         
         if not resume_file_path and request.resume_url:
             # Download resume from URL to temp file
-            async with httpx.AsyncClient() as client:
+            print(f"📥 [Router] Downloading resume from URL: {request.resume_url}")
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(request.resume_url)
                 if response.status_code == 200:
                     ext = ".pdf"
@@ -259,6 +267,16 @@ async def auto_apply_endpoint(request: AutoApplyRequest):
                     temp_file.write(response.content)
                     temp_file.close()
                     resume_file_path = temp_file.name
+                    print(f"📄 [Router] Downloaded resume to: {resume_file_path}")
+                else:
+                    print(f"⚠️ [Router] Failed to download resume from URL: {response.status_code}")
+        
+        # Validate user data
+        if not request.user_data:
+            raise HTTPException(status_code=400, detail="user_data is required")
+        
+        print(f"🤖 [Router] Starting auto-apply for {request.job_url}")
+        print(f"👤 [Router] User data keys: {list(request.user_data.keys())}")
         
         result = await run_auto_apply(
             job_url=request.job_url,
@@ -266,8 +284,15 @@ async def auto_apply_endpoint(request: AutoApplyRequest):
             user_id=request.user_id,
             resume_path=resume_file_path
         )
+        
         return AutoApplyResponse(**result)
+        
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"❌ [Router] Auto-apply failed with exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Auto-apply failed: {str(e)}")
 
 

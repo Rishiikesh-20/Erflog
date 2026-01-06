@@ -1,9 +1,14 @@
 import os
+import sys
 import json
 import tempfile
 import asyncio
 import re
 from dotenv import load_dotenv
+
+# Fix Windows asyncio event loop for Playwright
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # AI & LangChain
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -82,87 +87,184 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
         return {
             "success": False, 
             "job_url": job_url,
-            "message": "Browser automation libraries not installed. Run: pip install browser-use",
-            "details": "browser-use library is required for auto-apply functionality"
+            "message": "Browser automation libraries not installed. Run: pip install browser-use playwright && playwright install chromium",
+            "details": "browser-use and playwright libraries are required for auto-apply functionality"
         }
 
     print(f"🤖 [Agent 4] Starting Auto-Apply for: {job_url}")
     if resume_path:
         print(f"📄 [Agent 4] Resume file: {resume_path}")
+    print(f"👤 [Agent 4] User data: {list(user_data.keys())}")
+    
     browser = None
     status = "pending"
     reason = "Initializing..."
     
     try:
-        # browser-use v0.11.x requires its own LLM wrappers
-        from browser_use.llm.google import ChatGoogle
+        # Fix Windows asyncio for Playwright subprocess support
+        import sys
+        import nest_asyncio
         
-        llm = ChatGoogle(
-            model="gemini-2.0-flash",
-            api_key=os.getenv("GEMINI_API_KEY"),
+        if sys.platform == 'win32':
+            # Allow nested event loops and set Windows subprocess policy
+            nest_asyncio.apply()
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        
+        # browser-use v0.1.10 - Simple imports
+        from browser_use import Agent
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        
+        # Use LangChain's Gemini wrapper 
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash-exp",
+            google_api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=0.1
         )
-        # v0.11.x - Browser() takes no params for local browser
-        browser = Browser()
         
-        # Keep browser alive
-        _global_browser_refs.append(browser)
+        print(f"🎯 [Agent 4] Initializing browser agent with LLM...")
         
+        # Clean and prepare user data
         clean_data = {k: v for k, v in user_data.items() if v}
         user_data_str = "\n".join([f"- {key}: {value}" for key, value in clean_data.items()])
         
         # Build resume upload instruction if resume_path is provided
         resume_instruction = ""
         if resume_path and os.path.exists(resume_path):
+            # Normalize path for cross-platform compatibility
+            normalized_path = os.path.abspath(resume_path).replace("\\", "/")
             resume_instruction = f"""
-        5. RESUME UPLOAD: For the resume/CV upload field, use the upload_file action with the file path: {resume_path}
-           - Find the file input element (usually hidden behind 'Upload Resume', 'Attach Resume', 'Choose File' button)
-           - Use action: {{"upload_file": {{"index": <element_index>, "file": "{resume_path}"}}}}
-           - Do NOT try to type the file path - use the upload_file action only
+        5. RESUME/CV UPLOAD:
+           - Look for file upload fields with labels like: "Resume", "CV", "Upload Resume", "Attach CV", "Choose File"
+           - When you find a file input element, use the upload_file action
+           - File path: {normalized_path}
+           - Example action: {{"upload_file": {{"index": <element_index>, "file": "{normalized_path}"}}}}
+           - Verify the file was uploaded successfully by checking for filename display
         """
+            print(f"📎 [Agent 4] Will upload resume from: {normalized_path}")
         elif resume_path:
-            print(f"   ⚠️ Resume file not found at: {resume_path}")
+            print(f"⚠️ [Agent 4] Resume file not found at: {resume_path}")
         
+        # Enhanced task instructions
         task = f"""
-        GOAL: Apply to job at {job_url}
-        USER DATA: {user_data_str}
-        INSTRUCTIONS:
-        1. Click 'Apply'. 
-        2. Fill all form fields with the user data provided above.
-        3. For dropdown/select fields, choose the most appropriate option.
-        4. For required fields not in user data, use 'NA' or skip if possible.
-        {resume_instruction}
-        6. DO NOT SUBMIT. Stop before clicking the final submit button.
-        7. Report all fields you filled and any issues encountered.
+        GOAL: Auto-fill the job application form at {job_url} but DO NOT submit
         
-        IMPORTANT: For file uploads, you MUST use the upload_file action, not input_text or click_element.
-        Example: {{"upload_file": {{"index": 11, "file": "/path/to/file.pdf"}}}}
+        USER INFORMATION TO FILL:
+        {user_data_str}
+        
+        STEP-BY-STEP INSTRUCTIONS:
+        1. NAVIGATE: Go to the job application URL
+        2. LOCATE APPLY BUTTON: Find and click any button with text like "Apply", "Apply Now", "Easy Apply", "Quick Apply"
+        3. WAIT FOR FORM: Wait for the application form to load (1-2 seconds)
+        4. FILL FORM FIELDS:
+           - First Name / Full Name: Use the 'name' field
+           - Email: Use the 'email' field  
+           - Phone / Mobile: Use the 'phone' field
+           - LinkedIn: Use the 'linkedin' field
+           - GitHub: Use the 'github' field
+           - Location / City: Use the 'location' field
+           - Skills / Technologies: Use the 'skills' field
+           - For dropdowns: Select the most appropriate option
+           - For checkboxes: Check only if explicitly required
+           - For text areas: Fill with relevant information from user data
+        {resume_instruction}
+        6. VERIFY: Double-check all fields are filled correctly
+        7. STOP: DO NOT click "Submit", "Send Application", or "Apply" at the end
+        8. REPORT: List all fields you successfully filled and any issues
+        
+        IMPORTANT RULES:
+        - NEVER submit the form - the user needs to review first
+        - For file uploads, ALWAYS use the upload_file action, never type the path
+        - If you encounter a CAPTCHA or login page, report it and stop
+        - If the page requires authentication, report it and stop
+        - Wait 1-2 seconds after each page load for elements to appear
+        - Be patient - some forms load fields dynamically
+        
+        SUCCESS CRITERIA:
+        - All available form fields filled with user data
+        - Resume uploaded (if applicable)
+        - User can see the filled form and click submit manually
         """
         
-        # v0.11.x Agent API
-        agent = Agent(task=task, llm=llm, browser=browser)
-        history = await agent.run()
-        final_result = history.final_result() if hasattr(history, 'final_result') else str(history)
-        reason = str(final_result) if final_result else "No result returned"
+        print(f"🎯 [Agent 4] Starting browser automation...")
+        
+        # Run Playwright in a separate thread with ProactorEventLoop for Windows subprocess support
+        import concurrent.futures
+        import threading
+        
+        def run_playwright_in_thread():
+            """Run Playwright in a separate thread with its own ProactorEventLoop"""
+            # Create a new event loop with Windows subprocess support
+            if sys.platform == 'win32':
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            else:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            try:
+                # Create and run agent in this thread's event loop
+                agent = Agent(task=task, llm=llm)
+                _global_browser_refs.append(agent)
+                result = loop.run_until_complete(agent.run())
+                return result
+            finally:
+                loop.close()
+        
+        # Execute in thread pool
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(run_playwright_in_thread)
+            result = future.result()  # Wait for completion
+        
+        # Extract result - in v0.1.10, result is usually a string or dict
+        if isinstance(result, dict):
+            reason = result.get('message', str(result))
+        else:
+            reason = str(result) if result else "Automation completed"
+        
+        print(f"✅ [Agent 4] Automation completed. Result: {reason[:200]}...")
         
         # Detect failure conditions from the result text
         failure_keywords = [
             "not found", "404", "page doesn't exist", "no longer available",
-            "error", "failed", "could not", "unable to", "captcha", 
-            "login required", "sign in", "access denied", "forbidden"
+            "error", "failed", "could not", "unable to", "captcha", "recaptcha",
+            "login required", "sign in required", "access denied", "forbidden",
+            "authentication required", "please log in"
+        ]
+        
+        success_keywords = [
+            "filled", "completed", "entered", "uploaded", "form filled",
+            "successfully", "ready to submit", "ready for review"
         ]
         
         reason_lower = reason.lower()
-        if any(keyword in reason_lower for keyword in failure_keywords):
+        
+        # Check for success first
+        has_success = any(keyword in reason_lower for keyword in success_keywords)
+        has_failure = any(keyword in reason_lower for keyword in failure_keywords)
+        
+        if has_failure and not has_success:
             status = "failed"
-        else:
+            print(f"❌ [Agent 4] Detected failure condition")
+        elif has_success or "apply" in reason_lower:
             status = "success"
+            print(f"✅ [Agent 4] Successfully filled form")
+        else:
+            # Assume success if no clear failure
+            status = "success"
+            print(f"✅ [Agent 4] Completed with ambiguous result, assuming success")
 
     except Exception as e:
         status = "failed"
-        reason = str(e)
-    # NOTE: Do NOT close the browser properly here (await browser.close())
-    # 1. Browser object in v0.11.x doesn't have a close() method
-    # 2. We WANT to keep it open for the user to review
+        reason = f"Exception occurred: {str(e)}"
+        print(f"❌ [Agent 4] Exception: {reason}")
+        import traceback
+        traceback.print_exc()
+        
+    # NOTE: Do NOT close the browser - we want it to stay open
+    # The user needs to review the filled form and submit manually
+    print(f"🌐 [Agent 4] Browser left open for user review")
+    print(f"📋 [Agent 4] Final status: {status}")
     
     if user_id and job_id:
         save_application_status(user_id, job_id, status, {"message": reason})
@@ -170,8 +272,9 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
     return {
         "success": status == "success", 
         "job_url": job_url,
-        "message": reason if status == "failed" else "Auto-fill completed. Please review and submit manually.",
-        "details": reason
+        "message": reason if status == "failed" else "✅ Form auto-filled! Please review the information in the browser window and submit manually.",
+        "details": reason,
+        "browser_open": True  # Indicate that browser is still open
     }
 
 

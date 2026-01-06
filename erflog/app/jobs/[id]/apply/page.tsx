@@ -171,16 +171,41 @@ Location: ${job.location || ""}
       const profileResponse = await getSettingsProfile();
       const profile = profileResponse.profile;
 
-      // Build user data object for form filling
+      // Build comprehensive user data object for form filling
       const userData: Record<string, string> = {
+        // Basic Info
         name: profile.name || "",
         email: profile.email || "",
-        phone: "", // Not stored in profile
+        first_name: profile.name?.split(" ")[0] || "",
+        last_name: profile.name?.split(" ").slice(1).join(" ") || "",
+        
+        // Contact Info
+        phone: profile.phone || "",
+        mobile: profile.phone || "",
+        
+        // Location
+        location: profile.location || "",
+        city: profile.location?.split(",")[0] || "",
+        
+        // Professional Links
         linkedin: profile.linkedin_url || "",
+        linkedin_url: profile.linkedin_url || "",
         github: profile.github_url || "",
-        location: "", // Not stored in profile
+        github_url: profile.github_url || "",
+        portfolio: profile.portfolio_url || "",
+        website: profile.portfolio_url || "",
+        
+        // Skills & Experience
         skills: (profile.skills || []).join(", "),
+        technologies: (profile.skills || []).join(", "),
+        
+        // Additional fields that might be useful
+        years_of_experience: profile.years_of_experience?.toString() || "",
+        current_role: profile.current_role || "",
+        current_company: profile.current_company || "",
       };
+
+      console.log("[ApplyPage] Sending user data:", Object.keys(userData));
 
       const result = await autoApplyToJob(job.link, userData);
 
@@ -188,6 +213,11 @@ Location: ${job.location || ""}
         success: result.success,
         message: result.message,
       });
+      
+      // Show success notification
+      if (result.success) {
+        console.log("✅ Auto-apply successful! Browser should be open for review.");
+      }
     } catch (err) {
       console.error("Auto-apply error:", err);
       setAutoApplyResult({

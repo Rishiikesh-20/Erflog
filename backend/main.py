@@ -6,10 +6,16 @@ This file is intentionally minimal - all business logic lives in agent routers.
 """
 
 import os
+import sys
 import logging
+import asyncio
 from dotenv import load_dotenv
 
-# 1. Load env FIRST
+# Fix Windows asyncio event loop for Playwright subprocess support
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# 1. Load env
 load_dotenv()
 
 # Configure logging
