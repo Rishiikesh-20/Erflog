@@ -149,41 +149,6 @@ function AgentStatusCard({ status }: { status: string }) {
   );
 }
 
-function ProfileStrengthCard({ strength }: { strength: number }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.1 }}
-      className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm h-full"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">Profile Strength</h3>
-        <GraduationCap className="w-5 h-5 text-[#D95D39]" />
-      </div>
-      <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden mb-3">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${strength}%` }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="absolute h-full rounded-full"
-          style={{
-            background: strength >= 80 ? "linear-gradient(90deg, #22c55e, #16a34a)"
-              : strength >= 50 ? "linear-gradient(90deg, #D95D39, #c54d2d)"
-              : "linear-gradient(90deg, #f59e0b, #d97706)",
-          }}
-        />
-      </div>
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-500">
-          {strength >= 80 ? "Excellent!" : strength >= 50 ? "Good progress" : "Needs attention"}
-        </span>
-        <span className="font-semibold text-gray-900">{strength}%</span>
-      </div>
-    </motion.div>
-  );
-}
-
 function HotSkillCard({ skill, index }: { skill: SkillInsight; index: number }) {
   return (
     <motion.div
