@@ -25,6 +25,9 @@ from .github_watchdog import (
     get_latest_commit_sha
 )
 
+# Import ATS scoring from Agent 4
+from agents.agent_4_operative.tools import calculate_ats_score
+
 
 class PerceptionService:
     def __init__(self):
@@ -81,7 +84,17 @@ class PerceptionService:
                     "last_seen": now
                 }
 
-            # 6. Prepare DB Record (Supabase Profiles)
+            # 6. Calculate ATS Score for primary resume
+            print(f"📊 [Agent 1] Calculating ATS score for user: {user_id}")
+            try:
+                ats_result = await calculate_ats_score(resume_text)
+                ats_score = ats_result.get("score", 0)
+                print(f"✅ [Agent 1] ATS Score: {ats_score}")
+            except Exception as e:
+                print(f"⚠️ [Agent 1] ATS scoring failed: {e}")
+                ats_score = 0
+
+            # 7. Prepare DB Record (Supabase Profiles)
             profile_data = {
                 "user_id": user_id,
                 "name": extracted_data.get("name"),
@@ -93,6 +106,7 @@ class PerceptionService:
                 "resume_json": extracted_data,
                 "resume_text": resume_text,
                 "resume_url": resume_url,
+                "ATS_SCORE": str(ats_score),  # Save ATS score as TEXT
             }
 
             # 7. Upsert to DB
@@ -261,12 +275,73 @@ class PerceptionService:
                 "linkedin_url": profile.get("linkedin_url"),
                 "resume_url": profile.get("resume_url"),  # Primary resume
                 "sec_resume_url": profile.get("sec_resume_url"),  # Secondary/tailored resume
+                "ats_score": profile.get("ATS_SCORE"),  # ATS compatibility score
                 "skills": profile.get("skills", []),
                 "target_roles": profile.get("target_roles", []),
                 "onboarding_completed": profile.get("onboarding_completed", False),
                 "quiz_completed": profile.get("quiz_completed", False),
                 "updated_at": profile.get("updated_at")
             }
+        }
+
+    async def calculate_ats_on_demand(self, user_id: str) -> dict:
+        """
+        Calculate ATS score on demand for existing users.
+        
+        Called when Settings page loads and ATS_SCORE is NULL.
+        Fetches resume_text, calculates score, saves to DB, and returns it.
+        """
+        # 1. Fetch resume_text from profile
+        response = self.supabase.table("profiles").select(
+            "resume_text, ATS_SCORE"
+        ).eq("user_id", user_id).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        profile = response.data[0]
+        resume_text = profile.get("resume_text")
+        existing_score = profile.get("ATS_SCORE")
+        
+        # If score already exists, just return it
+        if existing_score:
+            return {
+                "status": "exists",
+                "ats_score": existing_score,
+                "message": "ATS score already calculated"
+            }
+        
+        # If no resume text, can't calculate
+        if not resume_text or len(resume_text.strip()) < 50:
+            return {
+                "status": "error",
+                "ats_score": None,
+                "message": "No resume text available. Please upload a resume first."
+            }
+        
+        # 2. Calculate ATS score
+        print(f"📊 [Agent 1] Calculating ATS score on demand for user: {user_id}")
+        try:
+            ats_result = await calculate_ats_score(resume_text)
+            ats_score = ats_result.get("score", 0)
+            print(f"✅ [Agent 1] ATS Score calculated: {ats_score}")
+        except Exception as e:
+            print(f"⚠️ [Agent 1] ATS scoring failed: {e}")
+            return {
+                "status": "error",
+                "ats_score": None,
+                "message": f"Failed to calculate ATS score: {str(e)}"
+            }
+        
+        # 3. Save to database
+        self.supabase.table("profiles").update({
+            "ATS_SCORE": str(ats_score)
+        }).eq("user_id", user_id).execute()
+        
+        return {
+            "status": "success",
+            "ats_score": str(ats_score),
+            "message": "ATS score calculated and saved"
         }
 
     # =========================================================================
@@ -802,6 +877,7 @@ class PerceptionService:
         experience_summary: Optional[str] = None,
         github_url: Optional[str] = None,
         linkedin_url: Optional[str] = None,
+        leetcode_url: Optional[str] = None,
         has_resume: bool = False
     ) -> Dict[str, Any]:
         """
@@ -842,6 +918,7 @@ class PerceptionService:
             "experience_summary": experience_summary or "",
             "github_url": github_url,
             "linkedin_url": linkedin_url,
+            "leetcode_url": leetcode_url,
             "onboarding_completed": False,  # Will be True after quiz
             "updated_at": now
         }

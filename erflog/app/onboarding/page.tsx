@@ -22,6 +22,7 @@ import {
   Brain,
   Zap,
   Trophy,
+  Code,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import type { EducationItem, QuizQuestion, QuizAnswer } from "@/lib/api";
@@ -283,6 +284,7 @@ export default function OnboardingPage() {
   // Step 3: Social links
   const [githubUrl, setGithubUrl] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [leetcodeUrl, setLeetcodeUrl] = useState("");
 
   // Step 4: Quiz
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
@@ -452,6 +454,7 @@ export default function OnboardingPage() {
         experience_summary: experienceSummary || undefined,
         github_url: githubUrl || undefined,
         linkedin_url: linkedinUrl || undefined,
+        leetcode_url: leetcodeUrl || undefined,
         has_resume: hasResume,
       });
       return true;
@@ -935,6 +938,26 @@ export default function OnboardingPage() {
                       className="flex-1 px-4 py-3 border-none focus:outline-none"
                     />
                   </div>
+                </div>
+
+                {/* LeetCode URL (Optional) */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <span className="flex items-center gap-2">
+                      <Code className="w-4 h-4" />
+                      LeetCode Profile (Optional)
+                    </span>
+                  </label>
+                  <input
+                    type="url"
+                    value={leetcodeUrl}
+                    onChange={(e) => setLeetcodeUrl(e.target.value)}
+                    placeholder="https://leetcode.com/u/username"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#D95D39]/20 focus:border-[#D95D39]"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    Connect to track your DSA progress and get personalized recommendations.
+                  </p>
                 </div>
 
                 {/* Info Card */}

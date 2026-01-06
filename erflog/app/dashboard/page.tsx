@@ -11,6 +11,8 @@ import type {
   SkillInsight,
   GitHubInsight,
   NewsCard,
+  SavedJob,
+  RoadmapDetails
 } from "@/lib/api";
 import {
   Bot,
@@ -54,6 +56,14 @@ interface JobMatch {
   gapSkills?: string[];
   description?: string;
   link?: string;
+  // Full job data for saving
+  roadmap?: RoadmapDetails;
+  application_text?: object;
+  summary?: string;
+  platform?: string;
+  source?: string;
+  type?: string;
+  needs_improvement?: boolean;
 }
 
 interface StrategyJobMatch {
@@ -254,6 +264,9 @@ export default function Dashboard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [apiComplete, setApiComplete] = useState(false);
   const hasRunStrategyRef = useRef(false);
+
+  // Saved Jobs State
+  const [savedJobIds, setSavedJobIds] = useState<Set<string>>(new Set());
 
   // GitHub Sync State (Single button, no auto-polling)
   const [isSyncing, setIsSyncing] = useState(false);
@@ -586,23 +599,122 @@ export default function Dashboard() {
     }
   }, [sessionId, isSyncing]);
 
-  // Combine insights jobs and strategy jobs if needed
+  // 5. Fetch Saved Jobs on mount
   useEffect(() => {
-    if (insights?.top_jobs) {
-        // If strategy returns jobs, use those, otherwise fall back to insights
-        // For now, mapping insights to JobMatch format for the unified grid
-        const mapped = insights.top_jobs.map(j => ({
+    const fetchSavedJobs = async () => {
+      if (!user?.id) return;
+      try {
+        const savedJobs = await api.getSavedJobs(user.id);
+        const ids = new Set(savedJobs.map((j: SavedJob) => j.original_job_id));
+        setSavedJobIds(ids);
+      } catch (err) {
+        console.error("Failed to fetch saved jobs:", err);
+      }
+    };
+    if (isAuthenticated && user?.id) {
+      fetchSavedJobs();
+    }
+  }, [isAuthenticated, user?.id]);
+
+  // Save Job Handler
+  const handleSaveJob = useCallback(async (job: { 
+    id: string; 
+    title: string; 
+    company: string; 
+    description?: string; 
+    link?: string; 
+    score: number; 
+    roadmap_details?: RoadmapDetails | null;
+    full_job_data?: object;
+  }) => {
+    if (!user?.id) return;
+    try {
+      await api.saveJob({
+        user_id: user.id,
+        original_job_id: job.id,
+        title: job.title,
+        company: job.company,
+        description: job.description || "",
+        link: job.link || "",
+        score: job.score / 100, // Convert back to 0-1 scale
+        roadmap_details: job.roadmap_details || null,
+        full_job_data: (job.full_job_data as any) || null,
+      });
+      setSavedJobIds(prev => new Set([...prev, job.id]));
+    } catch (err) {
+      console.error("Failed to save job:", err);
+      throw err;
+    }
+  }, [user?.id]);
+
+  // Unsave Job Handler
+  const handleUnsaveJob = useCallback(async (jobId: string) => {
+    if (!user?.id) return;
+    try {
+      // Find the saved job by original_job_id to get its UUID
+      const savedJobs = await api.getSavedJobs(user.id);
+      const savedJob = savedJobs.find((j: SavedJob) => j.original_job_id === jobId);
+      if (savedJob) {
+        await api.removeSavedJob(savedJob.id);
+        setSavedJobIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(jobId);
+          return newSet;
+        });
+      }
+    } catch (err) {
+      console.error("Failed to unsave job:", err);
+      throw err;
+    }
+  }, [user?.id]);
+
+  // Fetch full job data with roadmaps
+  useEffect(() => {
+    const fetchFullJobs = async () => {
+      if (!isAuthenticated) return;
+      try {
+        const data = await api.getTodayJobs();
+        const mapped = (data.jobs || []).map((job: any) => ({
+          id: job.id || String(Math.random()),
+          title: job.title,
+          company: job.company,
+          matchScore: Math.round(job.score * 100),
+          location: job.location || "Remote",
+          skills: job.roadmap?.missing_skills || [],
+          description: job.summary || job.description,
+          link: job.link,
+          // Full job data for saving
+          roadmap: job.roadmap || null,
+          application_text: job.application_text || null,
+          summary: job.summary,
+          platform: job.platform,
+          source: job.source,
+          type: job.type,
+          needs_improvement: job.needs_improvement,
+        }));
+        setJobs(mapped);
+      } catch (err) {
+        console.error("Failed to fetch full jobs:", err);
+        // Fallback to insights if full jobs fail
+        if (insights?.top_jobs) {
+          const mapped = insights.top_jobs.map(j => ({
             id: j.id,
             title: j.title,
             company: j.company,
             matchScore: j.match_score,
-            location: "Remote", // Defaulting as example
+            location: "Remote",
             skills: j.key_skills,
             postedDate: "Recent"
-        }));
-        setJobs(mapped);
+          }));
+          setJobs(mapped);
+        }
+      }
+    };
+    
+    if (isAuthenticated && !authLoading) {
+      fetchFullJobs();
     }
-  }, [insights]);
+  }, [isAuthenticated, authLoading, insights]);
 
 
   const handleAgentComplete = () => {
@@ -1022,21 +1134,48 @@ export default function Dashboard() {
              <div className="space-y-4">
               <h3 className="text-lg font-bold text-gray-900 mb-3 ml-1">Top 3 Recommended Jobs for you</h3>
               {jobs.length > 0 ? (
-                jobs.map((job) => (
+                jobs.slice(0, 3).map((job) => (
                   <JobCard 
                     key={job.id}
                     id={job.id}
                     companyName={job.company}
                     jobTitle={job.title}
                     matchScore={job.matchScore}
-                    onViewRoadmap={(id: string) => console.log("View roadmap for:", id)}
-                    onApply={(id: string) => console.log("Apply to:", id)}
+                    description={job.description}
+                    link={job.link}
+                    roadmap_details={job.roadmap}
+                    fullJobData={{
+                      roadmap: job.roadmap,
+                      application_text: job.application_text,
+                      summary: job.summary,
+                      location: job.location,
+                      platform: job.platform,
+                      source: job.source,
+                      type: job.type,
+                      needs_improvement: job.needs_improvement,
+                    }}
+                    isSaved={savedJobIds.has(job.id)}
+                    onSave={handleSaveJob}
+                    onUnsave={handleUnsaveJob}
+                    onAnalyzeGap={(id) => console.log("Analyze gap for:", id)}
+                    onDeploy={(id) => console.log("Deploy:", id)}
                   />
                 ))
               ) : (
                 <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
                   <p className="text-gray-500">No job matches found yet.</p>
                 </div>
+              )}
+              
+              {/* View All Jobs Button */}
+              {jobs.length > 3 && (
+                <button
+                  onClick={() => router.push("/jobs")}
+                  className="w-full mt-4 py-3 px-4 bg-surface hover:bg-gray-100 rounded-xl border border-gray-200 text-secondary hover:text-ink font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  View All {jobs.length} Jobs
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               )}
              </div>
           </div>

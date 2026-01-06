@@ -2,7 +2,7 @@ from .state import Agent4State
 from .service import agent4_service
 
 # Import router directly - let errors propagate so we can fix them
-from .router import agent4_router
+from .router import agent4_router, operative_router
 
 # Lazy imports for graph to avoid circular import issues
 def get_app():
@@ -16,6 +16,9 @@ def get_run_agent4():
 def get_router():
     return agent4_router
 
+def get_operative_router():
+    return operative_router
+
 from .schemas import (
     GenerateResumeRequest,
     GenerateResumeResponse,
@@ -23,8 +26,15 @@ from .schemas import (
     AnalyzeRejectionResponse,
     GenerateApplicationResponsesRequest,
     GenerateApplicationResponsesResponse,
-    ApplicationResponses
+    ApplicationResponses,
+    AtsRequest,
+    AtsScoreResponse,
+    AutoApplyRequest,
+    AutoApplyResponse
 )
+
+# Import tools functions
+from .tools import calculate_ats_score, run_auto_apply
 
 __all__ = [
     # Graph
@@ -35,7 +45,9 @@ __all__ = [
     "agent4_service",
     # Router
     "agent4_router",
+    "operative_router",
     "get_router",
+    "get_operative_router",
     # Schemas
     "GenerateResumeRequest",
     "GenerateResumeResponse",
@@ -44,4 +56,11 @@ __all__ = [
     "GenerateApplicationResponsesRequest",
     "GenerateApplicationResponsesResponse",
     "ApplicationResponses",
+    "AtsRequest",
+    "AtsScoreResponse",
+    "AutoApplyRequest",
+    "AutoApplyResponse",
+    # Tools
+    "calculate_ats_score",
+    "run_auto_apply",
 ]

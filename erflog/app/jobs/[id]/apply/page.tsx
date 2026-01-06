@@ -3,7 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useSession } from "@/lib/SessionContext";
-import { getTodayJobs, generateTailoredResume, TodayDataItem } from "@/lib/api";
+import { getTodayJobs, generateTailoredResume, autoApplyToJob, getSettingsProfile, TodayDataItem } from "@/lib/api";
 import {
   Loader2,
   Download,
@@ -14,6 +14,9 @@ import {
   FileText,
   Sparkles,
   Wand2,
+  Bot,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 
 export default function ApplyPage() {
@@ -34,6 +37,13 @@ export default function ApplyPage() {
 
   // State for copied indicators
   const [copied, setCopied] = useState<string | null>(null);
+
+  // State for auto-apply
+  const [isAutoApplying, setIsAutoApplying] = useState(false);
+  const [autoApplyResult, setAutoApplyResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   // State for editable form data (initialized from pre-generated)
   const [formData, setFormData] = useState({
@@ -147,6 +157,45 @@ Location: ${job.location || ""}
       );
     } finally {
       setIsGeneratingResume(false);
+    }
+  };
+
+  const handleAutoApply = async () => {
+    if (!job || !job.link) return;
+
+    setIsAutoApplying(true);
+    setAutoApplyResult(null);
+
+    try {
+      // Get user profile for form data
+      const profileResponse = await getSettingsProfile();
+      const profile = profileResponse.profile;
+
+      // Build user data object for form filling
+      const userData: Record<string, string> = {
+        name: profile.name || "",
+        email: profile.email || "",
+        phone: "", // Not stored in profile
+        linkedin: profile.linkedin_url || "",
+        github: profile.github_url || "",
+        location: "", // Not stored in profile
+        skills: (profile.skills || []).join(", "),
+      };
+
+      const result = await autoApplyToJob(job.link, userData);
+
+      setAutoApplyResult({
+        success: result.success,
+        message: result.message,
+      });
+    } catch (err) {
+      console.error("Auto-apply error:", err);
+      setAutoApplyResult({
+        success: false,
+        message: "Failed to start auto-apply. Please try again or apply manually.",
+      });
+    } finally {
+      setIsAutoApplying(false);
     }
   };
 
@@ -341,6 +390,118 @@ Location: ${job.location || ""}
             </div>
           </div>
         </div>
+
+        {/* Auto-Apply Section */}
+        {job.link && (
+          <div
+            className="bg-surface rounded-xl border p-8 mb-8"
+            style={{ borderColor: "#E5E0D8" }}
+          >
+            <div className="flex items-start gap-6">
+              <div
+                className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: autoApplyResult?.success
+                    ? "#22c55e"
+                    : isAutoApplying
+                    ? "#3b82f6"
+                    : "#8b5cf6",
+                }}
+              >
+                {isAutoApplying ? (
+                  <Loader2 className="w-8 h-8 text-white animate-spin" />
+                ) : (
+                  <Bot className="w-8 h-8 text-white" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h2 className="font-serif-bold text-2xl text-ink mb-2">
+                  Auto-Apply (Beta)
+                </h2>
+                <p className="text-secondary mb-4">
+                  Let our AI assistant open the job application page and auto-fill
+                  the form with your profile information. You&apos;ll need to review
+                  and submit manually.
+                </p>
+
+                {/* Warning Banner */}
+                <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">
+                        Important: Review Before Submitting
+                      </p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        This feature will auto-fill the application form but will
+                        NOT submit it. Always review the filled information before
+                        manually submitting your application.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Result Feedback */}
+                {autoApplyResult && (
+                  <div
+                    className={`mb-4 p-4 rounded-lg border ${
+                      autoApplyResult.success
+                        ? "bg-green-50 border-green-200"
+                        : "bg-red-50 border-red-200"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {autoApplyResult.success ? (
+                        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                      )}
+                      <p
+                        className={`text-sm ${
+                          autoApplyResult.success
+                            ? "text-green-700"
+                            : "text-red-700"
+                        }`}
+                      >
+                        {autoApplyResult.message}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Auto-Apply Button */}
+                <button
+                  onClick={handleAutoApply}
+                  disabled={isAutoApplying}
+                  className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: "#8b5cf6" }}
+                >
+                  {isAutoApplying ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Opening Browser & Filling Form...
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="w-5 h-5" />
+                      Auto-Fill Application
+                    </>
+                  )}
+                </button>
+
+                {isAutoApplying && (
+                  <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                    <p className="text-sm text-blue-700">
+                      🤖 A browser window will open on the server. The AI is
+                      navigating to the job page and filling out the application
+                      form. This may take 30-60 seconds...
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Application Responses Section */}
         <div

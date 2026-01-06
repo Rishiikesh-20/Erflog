@@ -97,6 +97,7 @@ class OnboardingCompleteRequest(BaseModel):
     # Social Links (optional)
     github_url: Optional[str] = None
     linkedin_url: Optional[str] = None
+    leetcode_url: Optional[str] = None
     
     # Whether resume was uploaded
     has_resume: bool = False

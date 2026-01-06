@@ -29,8 +29,11 @@ from auth.dependencies import get_current_user
 from agents.agent_1_perception.router import router as agent1_router
 from agents.agent_2_market.router import router as agent2_router
 from agents.agent_3_strategist.router import router as agent3_router
-from agents.agent_4_operative.router import agent4_router
+from agents.agent_3_strategist.saved_jobs_router import router as saved_jobs_router
+from agents.agent_4_operative import agent4_router, operative_router
 from agents.agent_5_mock_interview.router import router as agent5_router
+from agents.agent_6_leetcode import agent6_router
+
 
 # =============================================================================
 # FastAPI App
@@ -83,12 +86,12 @@ app.add_middleware(
 app.include_router(agent1_router)   # /api/perception/*
 app.include_router(agent2_router)   # /api/market/*
 app.include_router(agent3_router)   # /api/strategist/*
+app.include_router(saved_jobs_router)  # /api/saved-jobs/*
 app.include_router(agent4_router)   # /agent4/*
+app.include_router(operative_router)
 app.include_router(agent5_router)   # /api/interview/*
+app.include_router(agent6_router)   # /api/leetcode/*
 
-# =============================================================================
-# Core Endpoints (Health, Root, Auth)
-# =============================================================================
 
 @app.get("/")
 async def root():
@@ -101,7 +104,8 @@ async def root():
             "agent2_market": "/api/market",
             "agent3_strategist": "/api/strategist",
             "agent4_operative": "/agent4",
-            "agent5_interview": "/api/interview"
+            "agent5_interview": "/api/interview",
+            "agent6_leetcode": "/api/leetcode"
         },
         "docs": "/docs"
     }

@@ -97,6 +97,7 @@ export interface OnboardingCompleteRequest {
   experience_summary?: string;
   github_url?: string;
   linkedin_url?: string;
+  leetcode_url?: string;
   has_resume: boolean;
 }
 
@@ -395,6 +396,25 @@ export interface ApiError {
 }
 
 // ============================================================================
+// Auto-Apply Types (Agent 4 Browser Automation)
+// ============================================================================
+
+export interface AutoApplyRequest {
+  job_url: string;
+  user_data: Record<string, string>;
+  user_id?: string;
+  resume_path?: string;
+  resume_url?: string;
+}
+
+export interface AutoApplyResponse {
+  success: boolean;
+  job_url: string;
+  message: string;
+  details?: string;
+}
+
+// ============================================================================
 // API Functions
 // ============================================================================
 // (Keeping all existing functions standard)
@@ -508,6 +528,22 @@ export async function generateTailoredResume(
     job_id: jobId,
   });
   return response.data as GenerateTailoredResumeResponse;
+}
+
+/**
+ * Auto-fill a job application form using browser automation.
+ * Opens a visible browser, clicks Apply, and fills form fields.
+ * Does NOT submit - user must review and submit manually.
+ */
+export async function autoApplyToJob(
+  jobUrl: string,
+  userData: Record<string, string>
+): Promise<AutoApplyResponse> {
+  const response = await api.post<AutoApplyResponse>("/agent4/auto-apply", {
+    job_url: jobUrl,
+    user_data: userData,
+  });
+  return response.data;
 }
 
 export async function generateKit(
@@ -891,6 +927,7 @@ export interface SettingsProfile {
   linkedin_url: string | null;
   resume_url: string | null;
   sec_resume_url: string | null;
+  ats_score: string | null;  // ATS compatibility score (0-100)
   skills: string[];
   target_roles: string[];
   onboarding_completed: boolean;
@@ -956,4 +993,348 @@ export async function updatePrimaryResume(file: File): Promise<{
   return response.data;
 }
 
+/**
+ * Calculate ATS score on demand (for existing users without score)
+ */
+export async function calculateAtsOnDemand(): Promise<{
+  status: string;
+  ats_score: string | null;
+  message: string;
+}> {
+  const response = await api.post("/api/perception/settings/calculate-ats");
+  return response.data;
+}
+
+// ============================================================================
+// LeetCode Problem Solving API Functions
+// ============================================================================
+
+export interface LeetCodeProblem {
+  id: number;
+  title: string;
+  slug: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  category: string;
+  leetcode_url: string;
+  priority: number;
+}
+
+export interface LeetCodeCategory {
+  name: string;
+  icon: string;
+  color: string;
+  problems: LeetCodeProblem[];
+}
+
+export interface LeetCodeProblemsResponse {
+  categories: LeetCodeCategory[];
+  total_count: number;
+}
+
+export interface LeetCodeRecommendRequest {
+  quiz_answers: Record<string, string>;
+  leetcode_profile?: {
+    total_solved?: number;
+    easy_solved?: number;
+    medium_solved?: number;
+    hard_solved?: number;
+    ranking?: number;
+  };
+  solved_problem_ids?: number[];
+}
+
+export interface LeetCodeRecommendResponse {
+  recommended_ids: number[];
+  source: string;
+  reasoning?: string;
+}
+
+export interface LeetCodeProgressResponse {
+  solved_problem_ids: number[];
+  quiz_answers: Record<string, string>;
+  total_solved: number;
+}
+
+/**
+ * Get all Blind 75 problems organized by category
+ */
+export async function getLeetCodeProblems(): Promise<LeetCodeProblemsResponse> {
+  const response = await api.get<LeetCodeProblemsResponse>("/api/leetcode/problems");
+  return response.data;
+}
+
+// ============================================================================
+// Saved Jobs API
+// ============================================================================
+
+export interface SavedJob {
+  id: string;
+  user_id: string;
+  original_job_id: string;
+  title: string;
+  company: string;
+  description?: string;
+  link?: string;
+  score?: number;
+  roadmap_details?: {
+    missing_skills?: string[];
+    graph?: {
+      nodes?: Array<{
+        id: string;
+        label: string;
+        day: number;
+        type: string;
+        description: string;
+      }>;
+      edges?: Array<{ source: string; target: string }>;
+    };
+    resources?: Record<string, Array<{ name: string; url: string }>>;
+    full_job_data?: {
+      roadmap?: object;
+      application_text?: object;
+      summary?: string;
+      location?: string;
+      platform?: string;
+      source?: string;
+      type?: string;
+      needs_improvement?: boolean;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+  progress?: Record<string, { completed: boolean; updated_at: string }>;
+  created_at: string;
+  full_job_data?: Record<string, unknown>;
+}
+
+export interface SaveJobRequest {
+  user_id: string;
+  original_job_id: string;
+  title: string;
+  company: string;
+  description?: string;
+  link?: string;
+  score?: number;
+  roadmap_details?: RoadmapDetails | null;
+  full_job_data?: {
+    roadmap?: RoadmapDetails | null;
+    application_text?: object;
+    summary?: string;
+    location?: string;
+    platform?: string;
+    source?: string;
+    type?: string;
+    needs_improvement?: boolean;
+    [key: string]: unknown;
+  };
+  progress?: Record<string, unknown>;
+}
+
+export interface GlobalRoadmap {
+  id: string;
+  name: string;
+  merged_graph: {
+    title?: string;
+    description?: string;
+    total_estimated_weeks?: number;
+    skill_categories?: Array<{
+      category: string;
+      skills: Array<{
+        name: string;
+        priority: string;
+        appears_in_jobs?: string[];
+        estimated_weeks?: number;
+        resources?: string[] | Array<{name: string; url: string}>;
+      }>;
+    }>;
+    learning_path?: Array<{
+      phase: number;
+      title: string;
+      duration_weeks: number;
+      skills: string[];
+      milestone: string;
+    }>;
+    combined_missing_skills?: string[];
+    all_resources?: Array<{
+      skill: string;
+      resources: Array<{name: string; url: string} | string>;
+    }>;
+    source_jobs?: Array<{
+      title: string;
+      company: string;
+      name?: string;
+    }>;
+  };
+  source_job_ids: string[];
+  created_at: string;
+}
+
+/**
+ * Save a job to user's saved jobs list
+ */
+export async function saveJob(job: SaveJobRequest): Promise<SavedJob> {
+  const response = await api.post<SavedJob>("/api/saved-jobs/save", job);
+  return response.data;
+}
+
+/**
+ * Get AI-powered problem recommendations
+ */
+export async function getLeetCodeRecommendations(
+  request: LeetCodeRecommendRequest
+): Promise<LeetCodeRecommendResponse> {
+  const response = await api.post<LeetCodeRecommendResponse>(
+    "/api/leetcode/recommend",
+    request
+  );
+  return response.data;
+}
+
+/**
+ * Get all saved jobs for a user
+ */
+export async function getSavedJobs(userId: string): Promise<SavedJob[]> {
+  const response = await api.get<SavedJob[]>(`/api/saved-jobs/list/${userId}`);
+  return response.data;
+}
+
+/**
+ * Get user's LeetCode progress
+ */
+export async function getLeetCodeProgress(): Promise<LeetCodeProgressResponse> {
+  const response = await api.get<LeetCodeProgressResponse>("/api/leetcode/progress");
+  return response.data;
+}
+
+/**
+ * Remove a job from saved jobs
+ */
+export async function removeSavedJob(jobId: string): Promise<{ status: string; message: string }> {
+  const response = await api.delete(`/api/saved-jobs/remove/${jobId}`);
+  return response.data;
+}
+
+/**
+ * Save user's LeetCode progress
+ */
+export async function saveLeetCodeProgress(
+  solvedProblemIds: number[],
+  quizAnswers?: Record<string, string>
+): Promise<LeetCodeProgressResponse> {
+  const response = await api.post<LeetCodeProgressResponse>("/api/leetcode/progress", {
+    solved_problem_ids: solvedProblemIds,
+    quiz_answers: quizAnswers,
+  });
+  return response.data;
+}
+
+/**
+ * Check if a job is already saved
+ */
+export async function checkJobSaved(userId: string, originalJobId: string): Promise<{ is_saved: boolean; saved_job_id: string | null }> {
+  const response = await api.get(`/api/saved-jobs/check/${userId}/${originalJobId}`);
+  return response.data;
+}
+
+/**
+ * Merge roadmaps from multiple saved jobs
+ */
+export async function mergeRoadmaps(jobIds: string[], name?: string): Promise<GlobalRoadmap> {
+  const response = await api.post<GlobalRoadmap>("/api/saved-jobs/merge-roadmaps", {
+    job_ids: jobIds,
+    name: name || "My Master Plan"
+  });
+  return response.data;
+}
+
+/**
+ * Get all global (merged) roadmaps for a user
+ */
+export async function getGlobalRoadmaps(userId: string): Promise<GlobalRoadmap[]> {
+  const response = await api.get<GlobalRoadmap[]>(`/api/saved-jobs/global-roadmaps/${userId}`);
+  return response.data;
+}
+
+/**
+ * Get a specific global roadmap
+ */
+export async function getGlobalRoadmap(roadmapId: string): Promise<GlobalRoadmap> {
+  const response = await api.get<GlobalRoadmap>(`/api/saved-jobs/global-roadmap/${roadmapId}`);
+  return response.data;
+}
+
+/**
+ * Delete a global roadmap
+ */
+export async function deleteGlobalRoadmap(roadmapId: string): Promise<{ status: string; message: string }> {
+  const response = await api.delete(`/api/saved-jobs/global-roadmap/${roadmapId}`);
+  return response.data;
+}
+
+// =============================================================================
+// Progress Tracking
+// =============================================================================
+
+export interface ProgressUpdate {
+  node_id: string;
+  completed: boolean;
+}
+
+export interface ProgressResponse {
+  progress: Record<string, { completed: boolean; updated_at: string }>;
+  total_nodes: number;
+  completed_nodes: number;
+  completion_percentage: number;
+}
+
+/**
+ * Update progress on a roadmap node
+ */
+export async function updateProgress(jobId: string, nodeId: string, completed: boolean): Promise<{ status: string; progress: object; message: string }> {
+  const response = await api.put(`/api/saved-jobs/progress/${jobId}`, {
+    node_id: nodeId,
+    completed
+  });
+  return response.data;
+}
+
+/**
+ * Get progress for a saved job
+ */
+export async function getProgress(jobId: string): Promise<ProgressResponse> {
+  const response = await api.get<ProgressResponse>(`/api/saved-jobs/progress/${jobId}`);
+  return response.data;
+}
+
+// =============================================================================
+// Roadmap Completion & Skills Update
+// =============================================================================
+
+export interface CompleteRoadmapResponse {
+  status: string;
+  message: string;
+  new_skills_added: string[];
+  total_skills: number;
+}
+
+/**
+ * Called when user completes 100% of a roadmap.
+ * Analyzes the roadmap and adds learned skills to user's profile.
+ */
+export async function completeRoadmap(userId: string, savedJobId: string): Promise<CompleteRoadmapResponse> {
+  console.log('[API] completeRoadmap called with:', { userId, savedJobId });
+  try {
+    const response = await api.post<CompleteRoadmapResponse>('/api/saved-jobs/complete-roadmap', {
+      user_id: userId,
+      saved_job_id: savedJobId
+    });
+    console.log('[API] completeRoadmap response:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('[API] completeRoadmap error:', error?.response?.data || error?.message || error);
+    throw error;
+  }
+}
+
 export default api;
+

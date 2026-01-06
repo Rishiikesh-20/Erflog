@@ -355,6 +355,7 @@ async def complete_onboarding(
             experience_summary=request.experience_summary,
             github_url=request.github_url,
             linkedin_url=request.linkedin_url,
+            leetcode_url=request.leetcode_url,
             has_resume=request.has_resume
         )
         
@@ -543,3 +544,21 @@ async def update_primary_resume(
     except Exception as e:
         raise HTTPException(500, str(e))
 
+
+@router.post("/settings/calculate-ats")
+async def calculate_ats_on_demand(user: dict = Depends(get_current_user)):
+    """
+    Calculate ATS score on demand (Protected)
+    
+    Called when Settings page loads and ATS_SCORE is NULL.
+    Fetches resume_text from profile, calculates ATS score, and saves it.
+    """
+    user_id = user["sub"]
+    
+    try:
+        result = await agent1_service.calculate_ats_on_demand(user_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))

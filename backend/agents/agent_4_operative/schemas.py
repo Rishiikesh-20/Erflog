@@ -33,12 +33,13 @@ class AnalyzeRejectionRequest(BaseModel):
 
 class GenerateApplicationResponsesRequest(BaseModel):
     """Request to generate application question responses."""
+    # ENSURE THIS SAYS user_id, NOT profile_id
     user_id: str = Field(..., description="UUID of the user from Supabase profiles table")
+    
     job_description: str = Field(..., description="Target job description text")
     company_name: str = Field(..., description="Name of the company applying to")
     job_title: str = Field(..., description="Title of the position")
     additional_context: Optional[str] = Field(None, description="Any additional context or specific requirements")
-
 
 # ==================== RESPONSE SCHEMAS ====================
 
@@ -102,6 +103,40 @@ class AnalyzeRejectionResponse(BaseModel):
     gap_analysis: str
     recommendations: list[str]
     anti_pattern_created: bool
+
+
+# ==================== ATS SCORING SCHEMAS ====================
+
+class AtsRequest(BaseModel):
+    """Request to calculate ATS score for a resume."""
+    resume_text: str = Field(..., description="The full text content of the resume to analyze")
+
+
+class AtsScoreResponse(BaseModel):
+    """Response containing ATS score analysis."""
+    success: bool
+    score: int = Field(..., ge=0, le=100, description="ATS compatibility score from 0-100")
+    missing_keywords: list[str] = Field(default_factory=list, description="Recommended keywords to add")
+    summary: str = Field(..., description="Brief analysis summary")
+
+
+# ==================== AUTO-APPLY SCHEMAS ====================
+
+class AutoApplyRequest(BaseModel):
+    """Request to auto-fill a job application form."""
+    job_url: str = Field(..., description="URL of the job application page")
+    user_data: dict = Field(..., description="User information for form filling (name, email, phone, etc.)")
+    user_id: Optional[str] = Field(None, description="User ID to fetch resume from Supabase storage (stored as {user_id}.pdf)")
+    resume_path: Optional[str] = Field(None, description="Local file path to resume PDF/DOCX to upload")
+    resume_url: Optional[str] = Field(None, description="URL to download resume from (e.g., Supabase storage URL)")
+
+
+class AutoApplyResponse(BaseModel):
+    """Response from auto-apply operation."""
+    success: bool
+    job_url: str
+    message: str
+    details: Optional[str] = None
 
 
 class HealthResponse(BaseModel):

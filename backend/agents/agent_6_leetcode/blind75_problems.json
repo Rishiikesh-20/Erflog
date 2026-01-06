@@ -1,0 +1,147 @@
+[
+  {
+    "name": "Array",
+    "icon": "Layers",
+    "color": "#3B82F6",
+    "problems": [
+      { "id": 1, "title": "Two Sum", "slug": "two-sum", "difficulty": "Easy", "category": "Array", "leetcode_url": "https://leetcode.com/problems/two-sum/", "priority": 1 },
+      { "id": 121, "title": "Best Time to Buy and Sell Stock", "slug": "best-time-to-buy-and-sell-stock", "difficulty": "Easy", "category": "Array", "leetcode_url": "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/", "priority": 1 },
+      { "id": 217, "title": "Contains Duplicate", "slug": "contains-duplicate", "difficulty": "Easy", "category": "Array", "leetcode_url": "https://leetcode.com/problems/contains-duplicate/", "priority": 1 },
+      { "id": 238, "title": "Product of Array Except Self", "slug": "product-of-array-except-self", "difficulty": "Medium", "category": "Array", "leetcode_url": "https://leetcode.com/problems/product-of-array-except-self/", "priority": 1 },
+      { "id": 53, "title": "Maximum Subarray", "slug": "maximum-subarray", "difficulty": "Medium", "category": "Array", "leetcode_url": "https://leetcode.com/problems/maximum-subarray/", "priority": 1 },
+      { "id": 152, "title": "Maximum Product Subarray", "slug": "maximum-product-subarray", "difficulty": "Medium", "category": "Array", "leetcode_url": "https://leetcode.com/problems/maximum-product-subarray/", "priority": 2 },
+      { "id": 153, "title": "Find Minimum in Rotated Sorted Array", "slug": "find-minimum-in-rotated-sorted-array", "difficulty": "Medium", "category": "Array", "leetcode_url": "https://leetcode.com/problems/find-minimum-in-rotated-sorted-array/", "priority": 1 },
+      { "id": 33, "title": "Search in Rotated Sorted Array", "slug": "search-in-rotated-sorted-array", "difficulty": "Medium", "category": "Array", "leetcode_url": "https://leetcode.com/problems/search-in-rotated-sorted-array/", "priority": 1 },
+      { "id": 15, "title": "3Sum", "slug": "3sum", "difficulty": "Medium", "category": "Array", "leetcode_url": "https://leetcode.com/problems/3sum/", "priority": 1 },
+      { "id": 11, "title": "Container With Most Water", "slug": "container-with-most-water", "difficulty": "Medium", "category": "Array", "leetcode_url": "https://leetcode.com/problems/container-with-most-water/", "priority": 2 }
+    ]
+  },
+  {
+    "name": "Binary",
+    "icon": "Binary",
+    "color": "#8B5CF6",
+    "problems": [
+      { "id": 371, "title": "Sum of Two Integers", "slug": "sum-of-two-integers", "difficulty": "Medium", "category": "Binary", "leetcode_url": "https://leetcode.com/problems/sum-of-two-integers/", "priority": 2 },
+      { "id": 191, "title": "Number of 1 Bits", "slug": "number-of-1-bits", "difficulty": "Easy", "category": "Binary", "leetcode_url": "https://leetcode.com/problems/number-of-1-bits/", "priority": 1 },
+      { "id": 338, "title": "Counting Bits", "slug": "counting-bits", "difficulty": "Easy", "category": "Binary", "leetcode_url": "https://leetcode.com/problems/counting-bits/", "priority": 2 },
+      { "id": 268, "title": "Missing Number", "slug": "missing-number", "difficulty": "Easy", "category": "Binary", "leetcode_url": "https://leetcode.com/problems/missing-number/", "priority": 1 },
+      { "id": 190, "title": "Reverse Bits", "slug": "reverse-bits", "difficulty": "Easy", "category": "Binary", "leetcode_url": "https://leetcode.com/problems/reverse-bits/", "priority": 2 }
+    ]
+  },
+  {
+    "name": "Dynamic Programming",
+    "icon": "Sparkles",
+    "color": "#EF4444",
+    "problems": [
+      { "id": 70, "title": "Climbing Stairs", "slug": "climbing-stairs", "difficulty": "Easy", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/climbing-stairs/", "priority": 1 },
+      { "id": 322, "title": "Coin Change", "slug": "coin-change", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/coin-change/", "priority": 1 },
+      { "id": 300, "title": "Longest Increasing Subsequence", "slug": "longest-increasing-subsequence", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/longest-increasing-subsequence/", "priority": 1 },
+      { "id": 1143, "title": "Longest Common Subsequence", "slug": "longest-common-subsequence", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/longest-common-subsequence/", "priority": 1 },
+      { "id": 139, "title": "Word Break", "slug": "word-break", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/word-break/", "priority": 1 },
+      { "id": 39, "title": "Combination Sum", "slug": "combination-sum", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/combination-sum/", "priority": 1 },
+      { "id": 198, "title": "House Robber", "slug": "house-robber", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/house-robber/", "priority": 1 },
+      { "id": 213, "title": "House Robber II", "slug": "house-robber-ii", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/house-robber-ii/", "priority": 2 },
+      { "id": 91, "title": "Decode Ways", "slug": "decode-ways", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/decode-ways/", "priority": 2 },
+      { "id": 62, "title": "Unique Paths", "slug": "unique-paths", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/unique-paths/", "priority": 1 },
+      { "id": 55, "title": "Jump Game", "slug": "jump-game", "difficulty": "Medium", "category": "Dynamic Programming", "leetcode_url": "https://leetcode.com/problems/jump-game/", "priority": 1 }
+    ]
+  },
+  {
+    "name": "Graph",
+    "icon": "Network",
+    "color": "#F59E0B",
+    "problems": [
+      { "id": 133, "title": "Clone Graph", "slug": "clone-graph", "difficulty": "Medium", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/clone-graph/", "priority": 1 },
+      { "id": 207, "title": "Course Schedule", "slug": "course-schedule", "difficulty": "Medium", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/course-schedule/", "priority": 1 },
+      { "id": 417, "title": "Pacific Atlantic Water Flow", "slug": "pacific-atlantic-water-flow", "difficulty": "Medium", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/pacific-atlantic-water-flow/", "priority": 2 },
+      { "id": 200, "title": "Number of Islands", "slug": "number-of-islands", "difficulty": "Medium", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/number-of-islands/", "priority": 1 },
+      { "id": 128, "title": "Longest Consecutive Sequence", "slug": "longest-consecutive-sequence", "difficulty": "Medium", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/longest-consecutive-sequence/", "priority": 1 },
+      { "id": 269, "title": "Alien Dictionary", "slug": "alien-dictionary", "difficulty": "Hard", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/alien-dictionary/", "priority": 3 },
+      { "id": 261, "title": "Graph Valid Tree", "slug": "graph-valid-tree", "difficulty": "Medium", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/graph-valid-tree/", "priority": 2 },
+      { "id": 323, "title": "Number of Connected Components", "slug": "number-of-connected-components-in-an-undirected-graph", "difficulty": "Medium", "category": "Graph", "leetcode_url": "https://leetcode.com/problems/number-of-connected-components-in-an-undirected-graph/", "priority": 2 }
+    ]
+  },
+  {
+    "name": "Interval",
+    "icon": "Calendar",
+    "color": "#EC4899",
+    "problems": [
+      { "id": 57, "title": "Insert Interval", "slug": "insert-interval", "difficulty": "Medium", "category": "Interval", "leetcode_url": "https://leetcode.com/problems/insert-interval/", "priority": 1 },
+      { "id": 56, "title": "Merge Intervals", "slug": "merge-intervals", "difficulty": "Medium", "category": "Interval", "leetcode_url": "https://leetcode.com/problems/merge-intervals/", "priority": 1 },
+      { "id": 435, "title": "Non-overlapping Intervals", "slug": "non-overlapping-intervals", "difficulty": "Medium", "category": "Interval", "leetcode_url": "https://leetcode.com/problems/non-overlapping-intervals/", "priority": 1 },
+      { "id": 252, "title": "Meeting Rooms", "slug": "meeting-rooms", "difficulty": "Easy", "category": "Interval", "leetcode_url": "https://leetcode.com/problems/meeting-rooms/", "priority": 2 },
+      { "id": 253, "title": "Meeting Rooms II", "slug": "meeting-rooms-ii", "difficulty": "Medium", "category": "Interval", "leetcode_url": "https://leetcode.com/problems/meeting-rooms-ii/", "priority": 2 }
+    ]
+  },
+  {
+    "name": "Linked List",
+    "icon": "Link",
+    "color": "#14B8A6",
+    "problems": [
+      { "id": 206, "title": "Reverse Linked List", "slug": "reverse-linked-list", "difficulty": "Easy", "category": "Linked List", "leetcode_url": "https://leetcode.com/problems/reverse-linked-list/", "priority": 1 },
+      { "id": 141, "title": "Linked List Cycle", "slug": "linked-list-cycle", "difficulty": "Easy", "category": "Linked List", "leetcode_url": "https://leetcode.com/problems/linked-list-cycle/", "priority": 1 },
+      { "id": 21, "title": "Merge Two Sorted Lists", "slug": "merge-two-sorted-lists", "difficulty": "Easy", "category": "Linked List", "leetcode_url": "https://leetcode.com/problems/merge-two-sorted-lists/", "priority": 1 },
+      { "id": 23, "title": "Merge K Sorted Lists", "slug": "merge-k-sorted-lists", "difficulty": "Hard", "category": "Linked List", "leetcode_url": "https://leetcode.com/problems/merge-k-sorted-lists/", "priority": 1 },
+      { "id": 19, "title": "Remove Nth Node From End", "slug": "remove-nth-node-from-end-of-list", "difficulty": "Medium", "category": "Linked List", "leetcode_url": "https://leetcode.com/problems/remove-nth-node-from-end-of-list/", "priority": 1 },
+      { "id": 143, "title": "Reorder List", "slug": "reorder-list", "difficulty": "Medium", "category": "Linked List", "leetcode_url": "https://leetcode.com/problems/reorder-list/", "priority": 2 }
+    ]
+  },
+  {
+    "name": "Matrix",
+    "icon": "Grid3X3",
+    "color": "#6366F1",
+    "problems": [
+      { "id": 73, "title": "Set Matrix Zeroes", "slug": "set-matrix-zeroes", "difficulty": "Medium", "category": "Matrix", "leetcode_url": "https://leetcode.com/problems/set-matrix-zeroes/", "priority": 1 },
+      { "id": 54, "title": "Spiral Matrix", "slug": "spiral-matrix", "difficulty": "Medium", "category": "Matrix", "leetcode_url": "https://leetcode.com/problems/spiral-matrix/", "priority": 1 },
+      { "id": 48, "title": "Rotate Image", "slug": "rotate-image", "difficulty": "Medium", "category": "Matrix", "leetcode_url": "https://leetcode.com/problems/rotate-image/", "priority": 1 },
+      { "id": 79, "title": "Word Search", "slug": "word-search", "difficulty": "Medium", "category": "Matrix", "leetcode_url": "https://leetcode.com/problems/word-search/", "priority": 1 }
+    ]
+  },
+  {
+    "name": "String",
+    "icon": "Type",
+    "color": "#10B981",
+    "problems": [
+      { "id": 3, "title": "Longest Substring Without Repeating", "slug": "longest-substring-without-repeating-characters", "difficulty": "Medium", "category": "String", "leetcode_url": "https://leetcode.com/problems/longest-substring-without-repeating-characters/", "priority": 1 },
+      { "id": 424, "title": "Longest Repeating Character Replacement", "slug": "longest-repeating-character-replacement", "difficulty": "Medium", "category": "String", "leetcode_url": "https://leetcode.com/problems/longest-repeating-character-replacement/", "priority": 1 },
+      { "id": 76, "title": "Minimum Window Substring", "slug": "minimum-window-substring", "difficulty": "Hard", "category": "String", "leetcode_url": "https://leetcode.com/problems/minimum-window-substring/", "priority": 1 },
+      { "id": 242, "title": "Valid Anagram", "slug": "valid-anagram", "difficulty": "Easy", "category": "String", "leetcode_url": "https://leetcode.com/problems/valid-anagram/", "priority": 1 },
+      { "id": 49, "title": "Group Anagrams", "slug": "group-anagrams", "difficulty": "Medium", "category": "String", "leetcode_url": "https://leetcode.com/problems/group-anagrams/", "priority": 1 },
+      { "id": 20, "title": "Valid Parentheses", "slug": "valid-parentheses", "difficulty": "Easy", "category": "String", "leetcode_url": "https://leetcode.com/problems/valid-parentheses/", "priority": 1 },
+      { "id": 125, "title": "Valid Palindrome", "slug": "valid-palindrome", "difficulty": "Easy", "category": "String", "leetcode_url": "https://leetcode.com/problems/valid-palindrome/", "priority": 1 },
+      { "id": 5, "title": "Longest Palindromic Substring", "slug": "longest-palindromic-substring", "difficulty": "Medium", "category": "String", "leetcode_url": "https://leetcode.com/problems/longest-palindromic-substring/", "priority": 1 },
+      { "id": 647, "title": "Palindromic Substrings", "slug": "palindromic-substrings", "difficulty": "Medium", "category": "String", "leetcode_url": "https://leetcode.com/problems/palindromic-substrings/", "priority": 2 },
+      { "id": 271, "title": "Encode and Decode Strings", "slug": "encode-and-decode-strings", "difficulty": "Medium", "category": "String", "leetcode_url": "https://leetcode.com/problems/encode-and-decode-strings/", "priority": 2 }
+    ]
+  },
+  {
+    "name": "Tree",
+    "icon": "TreeDeciduous",
+    "color": "#22C55E",
+    "problems": [
+      { "id": 104, "title": "Maximum Depth of Binary Tree", "slug": "maximum-depth-of-binary-tree", "difficulty": "Easy", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/maximum-depth-of-binary-tree/", "priority": 1 },
+      { "id": 100, "title": "Same Tree", "slug": "same-tree", "difficulty": "Easy", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/same-tree/", "priority": 1 },
+      { "id": 226, "title": "Invert Binary Tree", "slug": "invert-binary-tree", "difficulty": "Easy", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/invert-binary-tree/", "priority": 1 },
+      { "id": 124, "title": "Binary Tree Maximum Path Sum", "slug": "binary-tree-maximum-path-sum", "difficulty": "Hard", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/binary-tree-maximum-path-sum/", "priority": 1 },
+      { "id": 102, "title": "Binary Tree Level Order Traversal", "slug": "binary-tree-level-order-traversal", "difficulty": "Medium", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/binary-tree-level-order-traversal/", "priority": 1 },
+      { "id": 297, "title": "Serialize and Deserialize Binary Tree", "slug": "serialize-and-deserialize-binary-tree", "difficulty": "Hard", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/serialize-and-deserialize-binary-tree/", "priority": 2 },
+      { "id": 572, "title": "Subtree of Another Tree", "slug": "subtree-of-another-tree", "difficulty": "Easy", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/subtree-of-another-tree/", "priority": 1 },
+      { "id": 105, "title": "Construct Binary Tree from Preorder and Inorder", "slug": "construct-binary-tree-from-preorder-and-inorder-traversal", "difficulty": "Medium", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/construct-binary-tree-from-preorder-and-inorder-traversal/", "priority": 1 },
+      { "id": 98, "title": "Validate Binary Search Tree", "slug": "validate-binary-search-tree", "difficulty": "Medium", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/validate-binary-search-tree/", "priority": 1 },
+      { "id": 230, "title": "Kth Smallest Element in a BST", "slug": "kth-smallest-element-in-a-bst", "difficulty": "Medium", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/kth-smallest-element-in-a-bst/", "priority": 1 },
+      { "id": 235, "title": "LCA of a Binary Search Tree", "slug": "lowest-common-ancestor-of-a-binary-search-tree", "difficulty": "Medium", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/lowest-common-ancestor-of-a-binary-search-tree/", "priority": 1 },
+      { "id": 208, "title": "Implement Trie (Prefix Tree)", "slug": "implement-trie-prefix-tree", "difficulty": "Medium", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/implement-trie-prefix-tree/", "priority": 1 },
+      { "id": 211, "title": "Design Add and Search Words", "slug": "design-add-and-search-words-data-structure", "difficulty": "Medium", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/design-add-and-search-words-data-structure/", "priority": 2 },
+      { "id": 212, "title": "Word Search II", "slug": "word-search-ii", "difficulty": "Hard", "category": "Tree", "leetcode_url": "https://leetcode.com/problems/word-search-ii/", "priority": 2 }
+    ]
+  },
+  {
+    "name": "Heap",
+    "icon": "ArrowUpDown",
+    "color": "#D946EF",
+    "problems": [
+      { "id": 347, "title": "Top K Frequent Elements", "slug": "top-k-frequent-elements", "difficulty": "Medium", "category": "Heap", "leetcode_url": "https://leetcode.com/problems/top-k-frequent-elements/", "priority": 1 },
+      { "id": 295, "title": "Find Median from Data Stream", "slug": "find-median-from-data-stream", "difficulty": "Hard", "category": "Heap", "leetcode_url": "https://leetcode.com/problems/find-median-from-data-stream/", "priority": 1 }
+    ]
+  }
+]

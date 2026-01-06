@@ -38,6 +38,7 @@ export default function Settings() {
   // Update states
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isUploadingResume, setIsUploadingResume] = useState(false);
+  const [isCalculatingAts, setIsCalculatingAts] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Fetch profile on mount
@@ -51,6 +52,24 @@ export default function Settings() {
         setName(data.profile.name || "");
         setGithubUrl(data.profile.github_url || "");
         setLinkedinUrl(data.profile.linkedin_url || "");
+        
+        // If ATS score is null but user has a resume, calculate it on demand
+        if (!data.profile.ats_score && data.profile.resume_url) {
+          console.log("ATS score is null, calculating on demand...");
+          setIsCalculatingAts(true);
+          try {
+            const atsResult = await api.calculateAtsOnDemand();
+            if (atsResult.ats_score) {
+              setProfile(prev => prev ? { ...prev, ats_score: atsResult.ats_score } : null);
+              console.log("ATS score calculated:", atsResult.ats_score);
+            }
+          } catch (atsErr) {
+            console.error("Failed to calculate ATS score:", atsErr);
+            // Don't show error to user, ATS is optional
+          } finally {
+            setIsCalculatingAts(false);
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch profile:", err);
         setError("Failed to load profile. Please try again.");
@@ -326,19 +345,63 @@ export default function Settings() {
             </div>
 
             {profile?.resume_url ? (
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-4">
-                <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-gray-600" />
-                  <span className="text-sm text-gray-700">Current resume uploaded</span>
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-gray-600" />
+                    <span className="text-sm text-gray-700">Current resume uploaded</span>
+                  </div>
+                  <a
+                    href={profile.resume_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-sm text-[#D95D39] hover:underline"
+                  >
+                    View <ExternalLink className="w-4 h-4" />
+                  </a>
                 </div>
-                <a
-                  href={profile.resume_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-sm text-[#D95D39] hover:underline"
-                >
-                  View <ExternalLink className="w-4 h-4" />
-                </a>
+                
+                
+                {/* ATS Score Badge */}
+                {isCalculatingAts ? (
+                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center bg-blue-100">
+                        <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Calculating ATS Score...</p>
+                        <p className="text-xs text-gray-500">Analyzing your resume compatibility</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : profile.ats_score ? (
+                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
+                          parseInt(profile.ats_score) >= 70 
+                            ? 'bg-green-500' 
+                            : parseInt(profile.ats_score) >= 40 
+                              ? 'bg-yellow-500' 
+                              : 'bg-red-500'
+                        }`}
+                      >
+                        {profile.ats_score}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">ATS Compatibility Score</p>
+                        <p className="text-xs text-gray-500">
+                          {parseInt(profile.ats_score) >= 70 
+                            ? '✓ Great! Your resume is ATS-friendly' 
+                            : parseInt(profile.ats_score) >= 40 
+                              ? '⚠ Consider improving keywords' 
+                              : '✗ Needs optimization for ATS'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="p-4 bg-yellow-50 rounded-lg mb-4">

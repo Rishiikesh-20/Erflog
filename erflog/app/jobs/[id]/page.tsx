@@ -19,16 +19,17 @@ export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id as string;
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
 
   const [job, setJob] = useState<JobWithDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savedJobId, setSavedJobId] = useState<string | null>(null);
 
   // Fetch job from API
   useEffect(() => {
     const fetchJob = async () => {
-      if (!isAuthenticated) return;
+      if (!isAuthenticated || !user) return;
 
       try {
         setIsLoading(true);
@@ -52,6 +53,16 @@ export default function JobDetailPage() {
             roadmap_details: foundJob.roadmap || null,
             needs_improvement: foundJob.needs_improvement,
           });
+          
+          // Check if this job is saved and get the saved_job_id for progress tracking
+          try {
+            const savedCheck = await api.checkJobSaved(user.id, String(foundJob.id));
+            if (savedCheck.is_saved && savedCheck.saved_job_id) {
+              setSavedJobId(savedCheck.saved_job_id);
+            }
+          } catch (err) {
+            console.error("Failed to check saved status:", err);
+          }
         } else {
           setError("Job not found");
         }
@@ -70,7 +81,7 @@ export default function JobDetailPage() {
         fetchJob();
       }
     }
-  }, [isAuthenticated, authLoading, jobId, router]);
+  }, [isAuthenticated, authLoading, jobId, router, user]);
 
   // Loading state
   if (authLoading || isLoading) {
@@ -191,7 +202,7 @@ export default function JobDetailPage() {
         {/* --- ROADMAP SECTION --- */}
         {job.roadmap_details && job.roadmap_details.graph ? (
           <div className="bg-surface rounded-xl border border-[#E5E0D8] p-6 mb-6">
-            <Roadmap data={job.roadmap_details as RoadmapDetails} />
+            <Roadmap data={job.roadmap_details as RoadmapDetails} savedJobId={savedJobId || undefined} userId={user?.id} />
           </div>
         ) : matchPercentage >= 80 ? (
           <div className="bg-green-50 rounded-xl border border-green-200 p-6 mb-6 text-center">
