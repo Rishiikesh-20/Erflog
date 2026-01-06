@@ -927,6 +927,7 @@ export interface SettingsProfile {
   linkedin_url: string | null;
   resume_url: string | null;
   sec_resume_url: string | null;
+  ats_score: string | null;  // ATS compatibility score (0-100)
   skills: string[];
   target_roles: string[];
   onboarding_completed: boolean;
@@ -989,6 +990,18 @@ export async function updatePrimaryResume(file: File): Promise<{
   const response = await api.put("/api/perception/settings/resume", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+  return response.data;
+}
+
+/**
+ * Calculate ATS score on demand (for existing users without score)
+ */
+export async function calculateAtsOnDemand(): Promise<{
+  status: string;
+  ats_score: string | null;
+  message: string;
+}> {
+  const response = await api.post("/api/perception/settings/calculate-ats");
   return response.data;
 }
 
