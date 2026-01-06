@@ -722,13 +722,20 @@ Example: ["Frontend Developer", "Data Scientist", "DevOps Engineer"]
         response_text = response.text.strip()
         
         # Parse JSON response
-        if response_text.startswith("["):
-            optimized_roles = json.loads(response_text)
-            # Validate roles are from original list
-            valid_roles = [r for r in optimized_roles if r in roles]
-            if valid_roles:
-                print(f"[LLM] Optimized roles: {valid_roles}")
-                return valid_roles[:max_roles]
+        if response_text.startswith("[") or "{" in response_text:
+            # Extract JSON from response (might have markdown or extra text)
+            json_start = response_text.find("[")
+            json_end = response_text.rfind("]") + 1
+            if json_start >= 0 and json_end > json_start:
+                try:
+                    json_text = response_text[json_start:json_end]
+                    optimized_roles = json.loads(json_text)
+                    if isinstance(optimized_roles, list) and optimized_roles:
+                        # Don't validate against original list - LLM might clean/normalize names
+                        print(f"[LLM] Optimized roles: {optimized_roles}")
+                        return optimized_roles[:max_roles]
+                except json.JSONDecodeError as e:
+                    print(f"[LLM] JSON parse error: {e}")
         
         # Fallback: return first N roles
         print("[LLM] Could not parse response, using fallback")
@@ -867,6 +874,14 @@ def allocate_roles_to_providers(roles: list[str]) -> dict[str, list[str]]:
         else:
             # Default to JSearch for general roles
             allocation["jsearch"].append(role)
+    
+    # Ensure balanced distribution: If Mantiks has 0 roles, redistribute
+    if roles and len(allocation["mantiks"]) == 0 and len(roles) >= 3:
+        # Move one role from jsearch or serpapi to mantiks for diversity
+        if allocation["jsearch"]:
+            allocation["mantiks"].append(allocation["jsearch"].pop())
+        elif allocation["serpapi"]:
+            allocation["mantiks"].append(allocation["serpapi"].pop())
     
     # Ensure at least one provider has roles if we have any
     if roles and not any(allocation.values()):

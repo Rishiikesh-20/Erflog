@@ -98,7 +98,7 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
         from browser_use.llm.google import ChatGoogle
         
         llm = ChatGoogle(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash",
             api_key=os.getenv("GEMINI_API_KEY"),
         )
         # v0.11.x - Browser() takes no params for local browser

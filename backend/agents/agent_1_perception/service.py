@@ -28,6 +28,9 @@ from .github_watchdog import (
 # Import ATS scoring from Agent 4
 from agents.agent_4_operative.tools import calculate_ats_score
 
+# Redis cache integration
+from services.cache_service import cache_service
+
 
 class PerceptionService:
     def __init__(self):
@@ -1061,18 +1064,26 @@ class PerceptionService:
         """
         Generate dashboard data for authenticated users.
         
-        OPTIMIZED:
-        - Uses github_activity_cache table instead of live GitHub fetching
-        - Uses today_data for AI-matched jobs, hackathons, and news
-        - Only generates new insights if cache is stale (>24h)
+        OPTIMIZED WITH REDIS:
+        - Cache-first reads for profile, today_data, github_activity_cache
+        - Falls back to Supabase on cache miss
+        - Hydrates cache after DB reads for future requests
         """
-        # Get user profile
-        response = self.supabase.table("profiles").select("*").eq("user_id", user_id).execute()
+        # =====================================================================
+        # Get user profile (CACHE-FIRST)
+        # =====================================================================
+        profile = cache_service.get_profile(user_id)
+        if not profile:
+            # Cache miss - fetch from DB
+            response = self.supabase.table("profiles").select("*").eq("user_id", user_id).execute()
+            
+            if not response.data:
+                raise HTTPException(status_code=404, detail="Profile not found")
+            
+            profile = response.data[0]
+            # Hydrate cache
+            cache_service.set_profile(user_id, profile)
         
-        if not response.data:
-            raise HTTPException(status_code=404, detail="Profile not found")
-        
-        profile = response.data[0]
         user_name = profile.get("name", "User")
         skills = profile.get("skills", []) or []
         target_roles = profile.get("target_roles", []) or []
@@ -1088,43 +1099,56 @@ class PerceptionService:
         if profile.get("quiz_completed"): strength += 10
         
         # =====================================================================
-        # Get personalized data from today_data table (Agent 3)
+        # Get personalized data from today_data (CACHE-FIRST - already cached by strategist)
         # =====================================================================
-        today_data_response = self.supabase.table("today_data").select(
-            "data_json, updated_at"
-        ).eq("user_id", user_id).execute()
+        cached_today = cache_service.get_today_data(user_id)
+        
+        if cached_today:
+            data = cached_today.get("data", {})
+        else:
+            # Cache miss - fetch from DB and hydrate
+            today_data_response = self.supabase.table("today_data").select(
+                "data_json, updated_at"
+            ).eq("user_id", user_id).execute()
+            
+            if today_data_response.data:
+                data = today_data_response.data[0].get("data_json", {})
+                # Hydrate cache
+                cache_service.set_today_data(user_id, {
+                    "data": data,
+                    "updated_at": today_data_response.data[0].get("updated_at")
+                })
+            else:
+                data = {}
         
         top_jobs = []
         hot_skills = []
         news_cards = []
-        
-        if today_data_response.data:
-            data = today_data_response.data[0].get("data_json", {})
             
-            # Get top 3 jobs for dashboard
-            jobs_data = data.get("jobs", [])[:3]
-            for job in jobs_data:
-                top_jobs.append({
-                    "id": str(job.get("supabase_id", job.get("id", ""))),
-                    "title": job.get("title", "Unknown"),
-                    "company": job.get("company", "Unknown"),
-                    "match_score": int(job.get("score", 0) * 100),
-                    "key_skills": skills[:3] if skills else []
-                })
+        # Get top 3 jobs for dashboard
+        jobs_data = data.get("jobs", [])[:3]
+        for job in jobs_data:
+            top_jobs.append({
+                "id": str(job.get("supabase_id", job.get("id", ""))),
+                "title": job.get("title", "Unknown"),
+                "company": job.get("company", "Unknown"),
+                "match_score": int(job.get("score", 0) * 100),
+                "key_skills": skills[:3] if skills else []
+            })
             
-            # Get AI-generated hot skills from today_data (if available)
-            hot_skills_data = data.get("hot_skills", [])
-            if hot_skills_data:
-                hot_skills = hot_skills_data[:3]
+        # Get AI-generated hot skills from today_data (if available)
+        hot_skills_data = data.get("hot_skills", [])
+        if hot_skills_data:
+            hot_skills = hot_skills_data[:3]
             
-            # Get news from today_data
-            news_data = data.get("news", [])[:2]
-            for news in news_data:
-                news_cards.append({
-                    "title": news.get("title", "Tech Update"),
-                    "summary": news.get("summary", "")[:100],
-                    "relevance": "Based on your profile"
-                })
+        # Get news from today_data
+        news_data = data.get("news", [])[:2]
+        for news in news_data:
+            news_cards.append({
+                "title": news.get("title", "Tech Update"),
+                "summary": news.get("summary", "")[:100],
+                "relevance": "Based on your profile"
+            })
         
         # Fallback: Generate hot skills from trending if not in today_data
         if not hot_skills:
@@ -1153,30 +1177,50 @@ class PerceptionService:
             ]
         
         # =====================================================================
-        # Get GitHub insights from CACHE (no live fetching!)
+        # Get GitHub insights from CACHE-FIRST (Redis then Supabase)
         # =====================================================================
         github_insights = None
         if github_url:
-            try:
-                cache_response = self.supabase.table("github_activity_cache").select(
-                    "detected_skills, repos_touched, tech_stack, insight_message, analyzed_at"
-                ).eq("user_id", user_id).execute()
+            # Try Redis first
+            cached_github = cache_service.get_github_activity(user_id)
+            
+            if cached_github:
+                repos = cached_github.get("repos_touched", []) or []
+                detected = cached_github.get("detected_skills", []) or []
                 
-                if cache_response.data:
-                    cache = cache_response.data[0]
-                    repos = cache.get("repos_touched", []) or []
-                    detected = cache.get("detected_skills", []) or []
+                github_insights = {
+                    "repo_name": repos[0] if repos else "your repositories",
+                    "recent_commits": len(repos),
+                    "detected_skills": detected[:3] if isinstance(detected, list) else [],
+                    "insight_text": cached_github.get("insight_message") or f"Your recent activity shows strong focus on {skills[0] if skills else 'development'}",
+                    "from_cache": True,
+                    "analyzed_at": cached_github.get("analyzed_at")
+                }
+            else:
+                # Cache miss - fetch from Supabase and hydrate Redis
+                try:
+                    cache_response = self.supabase.table("github_activity_cache").select(
+                        "detected_skills, repos_touched, tech_stack, insight_message, analyzed_at"
+                    ).eq("user_id", user_id).execute()
                     
-                    github_insights = {
-                        "repo_name": repos[0] if repos else "your repositories",
-                        "recent_commits": len(repos),
-                        "detected_skills": detected[:3] if isinstance(detected, list) else [],
-                        "insight_text": cache.get("insight_message") or f"Your recent activity shows strong focus on {skills[0] if skills else 'development'}",
-                        "from_cache": True,
-                        "analyzed_at": cache.get("analyzed_at")
-                    }
-            except Exception as e:
-                print(f"[Dashboard] GitHub cache read error: {e}")
+                    if cache_response.data:
+                        cache = cache_response.data[0]
+                        repos = cache.get("repos_touched", []) or []
+                        detected = cache.get("detected_skills", []) or []
+                        
+                        github_insights = {
+                            "repo_name": repos[0] if repos else "your repositories",
+                            "recent_commits": len(repos),
+                            "detected_skills": detected[:3] if isinstance(detected, list) else [],
+                            "insight_text": cache.get("insight_message") or f"Your recent activity shows strong focus on {skills[0] if skills else 'development'}",
+                            "from_cache": True,
+                            "analyzed_at": cache.get("analyzed_at")
+                        }
+                        
+                        # Hydrate Redis cache
+                        cache_service.set_github_activity(user_id, cache)
+                except Exception as e:
+                    print(f"[Dashboard] GitHub cache read error: {e}")
         
         return {
             "user_name": user_name,

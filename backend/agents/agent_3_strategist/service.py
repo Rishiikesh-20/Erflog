@@ -12,12 +12,16 @@ This service runs as a daily cron job to:
 
 import os
 import logging
-from typing import Any, Optional
-from datetime import datetime, timezone
+import math
+from typing import Any, Optional, Dict, List
+from datetime import datetime, timezone, date
 from supabase import create_client
 from pinecone import Pinecone
 from google import genai
 from dotenv import load_dotenv
+
+# Redis cache integration
+from services.cache_service import cache_service
 
 load_dotenv()
 
@@ -37,6 +41,14 @@ USER_INDEX_NAME = os.getenv("PINECONE_USER_INDEX_NAME", "career-flow-users")
 NAMESPACE_JOBS = ""  # default namespace
 NAMESPACE_HACKATHONS = "hackathon"
 NAMESPACE_NEWS = "news"
+
+# =========================================================================
+# RECENCY BOOSTING CONFIGURATION
+# =========================================================================
+OVERSAMPLE_FACTOR = 5  # Query 5x more results for reranking
+SEMANTIC_WEIGHT = 0.6  # 60% weight for semantic similarity
+RECENCY_WEIGHT = 0.4   # 40% weight for recency
+RECENCY_DECAY_LAMBDA = 0.03  # Exponential decay rate (90 day half-life)
 
 
 class StrategistService:
@@ -139,6 +151,106 @@ class StrategistService:
         
         return None
     
+    @staticmethod
+    def calculate_recency_score(posted_at: Optional[date]) -> float:
+        """
+        Calculate recency score using exponential decay.
+        
+        Args:
+            posted_at: Date when the job/hackathon/news was posted
+            
+        Returns:
+            Float between 0.0 and 1.0:
+            - 1.0 = posted today
+            - 0.8 = posted 7 days ago
+            - 0.5 = posted 30 days ago
+            - 0.2 = posted 60 days ago
+            - 0.0 = posted 90+ days ago or no date
+        """
+        if not posted_at:
+            # No date available - assume very old
+            return 0.1
+        
+        try:
+            # Handle both date and datetime objects
+            if isinstance(posted_at, datetime):
+                posted_at = posted_at.date()
+            
+            today = datetime.now(timezone.utc).date()
+            days_old = (today - posted_at).days
+            
+            # Exponential decay: score = e^(-lambda * days)
+            recency_score = math.exp(-RECENCY_DECAY_LAMBDA * days_old)
+            
+            # Clamp between 0 and 1
+            return max(0.0, min(1.0, recency_score))
+            
+        except Exception as e:
+            logger.warning(f"Error calculating recency score: {e}")
+            return 0.1
+    
+    def _fetch_timestamps_batch(
+        self, 
+        supabase_ids: List[int], 
+        namespace: str
+    ) -> Dict[str, Optional[date]]:
+        """
+        Fetch posted_at/created_at timestamps in batch from Supabase.
+        
+        Args:
+            supabase_ids: List of Supabase record IDs
+            namespace: Pinecone namespace (maps to table name)
+            
+        Returns:
+            Dict mapping pinecone_id (str) -> posted_at (date)
+        """
+        if not supabase_ids:
+            return {}
+        
+        # Map namespace to table name
+        table_map = {
+            NAMESPACE_JOBS: "jobs",
+            NAMESPACE_HACKATHONS: "hackathons",
+            NAMESPACE_NEWS: "market_news"
+        }
+        table_name = table_map.get(namespace, "jobs")
+        
+        # Determine which date column to use
+        date_column = "posted_at" if table_name in ["jobs", "hackathons"] else "published_at"
+        
+        try:
+            # Batch fetch timestamps
+            response = self.supabase.table(table_name).select(
+                f"id, {date_column}, created_at"
+            ).in_("id", supabase_ids).execute()
+            
+            # Build lookup dict
+            timestamps = {}
+            for record in response.data:
+                record_id = str(record.get("id"))
+                
+                # Prefer posted_at/published_at, fallback to created_at
+                date_value = record.get(date_column) or record.get("created_at")
+                
+                if date_value:
+                    # Parse string to date if needed
+                    if isinstance(date_value, str):
+                        try:
+                            date_value = datetime.fromisoformat(date_value.replace('Z', '+00:00')).date()
+                        except:
+                            date_value = None
+                    elif isinstance(date_value, datetime):
+                        date_value = date_value.date()
+                
+                timestamps[record_id] = date_value
+            
+            logger.debug(f"Fetched {len(timestamps)} timestamps from {table_name}")
+            return timestamps
+            
+        except Exception as e:
+            logger.warning(f"Failed to fetch timestamps from {table_name}: {e}")
+            return {}
+    
     def _query_namespace(
         self, 
         user_vector: list[float], 
@@ -146,26 +258,68 @@ class StrategistService:
         top_k: int
     ) -> list[dict[str, Any]]:
         """
-        Query a Pinecone namespace with user's vector.
-        Returns list of matches with metadata.
+        Query a Pinecone namespace with user's vector using hybrid scoring.
+        
+        RECENCY BOOSTING STRATEGY:
+        1. Oversample from Pinecone (5x more results)
+        2. Fetch timestamps from PostgreSQL in batch
+        3. Calculate hybrid score: (semantic × 0.6) + (recency × 0.4)
+        4. Re-rank and return top_k results
+        
+        Returns list of matches with metadata sorted by hybrid score.
         """
         if not self.pinecone_index:
             return []
         
         try:
+            # Step 1: Oversample from Pinecone
+            oversample_k = top_k * OVERSAMPLE_FACTOR
             results = self.pinecone_index.query(
                 vector=user_vector,
-                top_k=top_k,
+                top_k=oversample_k,
                 include_metadata=True,
                 namespace=namespace
             )
             
-            matches = []
-            for match in results.get("matches", []):
+            raw_matches = results.get("matches", [])
+            if not raw_matches:
+                return []
+            
+            # Step 2: Extract supabase_ids for batch timestamp fetch
+            supabase_ids = []
+            for match in raw_matches:
+                sid = match.get("metadata", {}).get("supabase_id")
+                if sid:
+                    try:
+                        supabase_ids.append(int(sid))
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Step 3: Fetch timestamps in batch
+            timestamps = self._fetch_timestamps_batch(supabase_ids, namespace)
+            
+            # Step 4: Calculate hybrid scores and re-rank
+            scored_matches = []
+            for match in raw_matches:
                 metadata = match.get("metadata", {})
-                matches.append({
+                supabase_id = str(metadata.get("supabase_id", ""))
+                
+                # Semantic score from Pinecone
+                semantic_score = match.get("score", 0.0)
+                
+                # Recency score from timestamp
+                posted_at = timestamps.get(supabase_id)
+                recency_score = self.calculate_recency_score(posted_at)
+                
+                # Hybrid score
+                final_score = (semantic_score * SEMANTIC_WEIGHT) + (recency_score * RECENCY_WEIGHT)
+                
+                # Build match dict with hybrid score
+                match_dict = {
                     "id": match.get("id"),
-                    "score": round(match.get("score", 0), 4),
+                    "score": round(final_score, 4),  # Hybrid score
+                    "semantic_score": round(semantic_score, 4),  # Original
+                    "recency_score": round(recency_score, 4),  # Recency component
                     "title": metadata.get("title", "Unknown"),
                     "company": metadata.get("company", "Unknown"),
                     "link": metadata.get("link", ""),
@@ -175,9 +329,25 @@ class StrategistService:
                     "location": metadata.get("location", ""),
                     "type": metadata.get("type", namespace),
                     "supabase_id": metadata.get("supabase_id"),
-                })
+                    "posted_at": posted_at.isoformat() if posted_at else None,
+                }
+                
+                scored_matches.append(match_dict)
             
-            return matches
+            # Step 5: Sort by hybrid score (descending) and return top_k
+            scored_matches.sort(key=lambda x: x["score"], reverse=True)
+            final_matches = scored_matches[:top_k]
+            
+            # Log recency boost stats
+            if final_matches:
+                avg_recency = sum(m["recency_score"] for m in final_matches) / len(final_matches)
+                logger.info(
+                    f"[Recency Boost] {namespace}: {len(final_matches)} results, "
+                    f"avg_recency={avg_recency:.2f}, "
+                    f"top_hybrid={final_matches[0]['score']:.3f}"
+                )
+            
+            return final_matches
         
         except Exception as e:
             logger.error(f"Query failed for namespace {namespace}: {e}")
@@ -186,20 +356,28 @@ class StrategistService:
     def _save_today_data(self, user_id: str, data: dict[str, Any]) -> bool:
         """
         Save/update user's today_data (upsert).
+        Uses write-through: DB first, then cache.
         Replaces previous day's data for this user.
         """
         try:
+            updated_at = datetime.now(timezone.utc).isoformat()
             payload = {
                 "user_id": user_id,
                 "data_json": data,
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": updated_at
             }
             
-            # Upsert: insert or update on conflict
+            # Upsert: insert or update on conflict (DB first for consistency)
             self.supabase.table("today_data").upsert(
                 payload,
                 on_conflict="user_id"
             ).execute()
+            
+            # Update cache after successful DB write (write-through)
+            cache_service.set_today_data(user_id, {
+                "data": data,
+                "updated_at": updated_at
+            })
             
             return True
         except Exception as e:
@@ -208,19 +386,30 @@ class StrategistService:
     
     def get_user_today_data(self, user_id: str) -> Optional[dict[str, Any]]:
         """
-        Get a user's today_data from database.
-        Used by API endpoints.
+        Get a user's today_data.
+        Uses cache-first strategy with DB fallback.
         """
+        # Try cache first
+        cached = cache_service.get_today_data(user_id)
+        if cached:
+            logger.debug(f"Cache HIT for today_data:{user_id}")
+            return cached
+        
+        # Cache miss - fetch from DB
+        logger.debug(f"Cache MISS for today_data:{user_id}, fetching from DB")
         try:
             result = self.supabase.table("today_data").select(
                 "data_json, updated_at"
             ).eq("user_id", user_id).single().execute()
             
             if result.data:
-                return {
+                data = {
                     "data": result.data.get("data_json", {}),
                     "updated_at": result.data.get("updated_at")
                 }
+                # Hydrate cache for future reads
+                cache_service.set_today_data(user_id, data)
+                return data
             return None
         except Exception as e:
             logger.error(f"Failed to get today_data for {user_id}: {e}")
@@ -296,29 +485,52 @@ Return ONLY the JSON array, no markdown."""
         Also generates AI hot skills recommendations.
         For jobs with match < 80%, generates roadmaps.
         For ALL jobs, generates default application text.
+        
+        CRON CACHE WARMING: Also refreshes profile and github_activity caches.
         Returns the generated today_data.
         """
         logger.info(f"Processing user: {user_id}")
         
-        # Get user profile first (for skills and roles)
-        # Note: Column is 'name' not 'full_name' in the profiles table
-        profile_response = self.supabase.table("profiles").select(
-            "skills, target_roles, name, experience_summary"
-        ).eq("user_id", user_id).execute()
+        # =========================================================================
+        # CACHE WARMING: Fetch and cache full profile during cron
+        # =========================================================================
+        profile_response = self.supabase.table("profiles").select("*").eq("user_id", user_id).execute()
         
         user_skills = []
         target_roles = []
         user_profile = {}
+        github_url = None
+        
         if profile_response.data:
             profile_data = profile_response.data[0]
             user_skills = profile_data.get("skills", []) or []
             target_roles = profile_data.get("target_roles", []) or []
+            github_url = profile_data.get("github_url")
             user_profile = {
                 "name": profile_data.get("name", "Candidate"),
                 "skills": user_skills,
                 "target_roles": target_roles,
                 "experience_summary": profile_data.get("experience_summary", "")
             }
+            
+            # Warm the profile cache
+            cache_service.set_profile(user_id, profile_data)
+            logger.info(f"🔥 Cache WARMED for profile:{user_id}")
+        
+        # =========================================================================
+        # CACHE WARMING: Fetch and cache github_activity during cron
+        # =========================================================================
+        if github_url:
+            try:
+                github_response = self.supabase.table("github_activity_cache").select(
+                    "detected_skills, repos_touched, tech_stack, insight_message, analyzed_at"
+                ).eq("user_id", user_id).execute()
+                
+                if github_response.data:
+                    cache_service.set_github_activity(user_id, github_response.data[0])
+                    logger.info(f"🔥 Cache WARMED for github_activity:{user_id}")
+            except Exception as e:
+                logger.warning(f"Could not warm github_activity cache: {e}")
         
         # Get user embedding
         user_vector = self._get_user_embedding(user_id)

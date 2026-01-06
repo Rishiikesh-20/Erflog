@@ -5,10 +5,10 @@ from browser_use import Agent, Browser
 import asyncio
 
 async def reproduction():
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp", google_api_key="fake")
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="fake")
     # PATCH: browser-use v0.11.x expects .provider and .model_name attributes
     llm.provider = "google" 
-    llm.model_name = "gemini-2.0-flash-exp"
+    llm.model_name = "gemini-2.0-flash"
     
     browser = Browser()
     agent = Agent(task="test", llm=llm, browser=browser)

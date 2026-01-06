@@ -13,6 +13,9 @@ from pydantic import BaseModel
 from supabase import create_client
 import google.generativeai as genai
 
+# Redis cache integration
+from services.cache_service import cache_service
+
 # Initialize
 router = APIRouter(prefix="/api/saved-jobs", tags=["Saved Jobs"])
 
@@ -116,6 +119,10 @@ async def save_job(request: SaveJobRequest):
         raise HTTPException(status_code=500, detail="Failed to save job")
     
     saved_job = result.data[0]
+    
+    # Invalidate list cache (next read will refresh from DB)
+    cache_service.invalidate_saved_jobs(request.user_id)
+    
     return SavedJobResponse(
         id=saved_job["id"],
         user_id=saved_job["user_id"],
@@ -133,14 +140,20 @@ async def save_job(request: SaveJobRequest):
 
 @router.get("/list/{user_id}", response_model=List[SavedJobResponse])
 async def get_saved_jobs(user_id: str):
-    """Get all saved jobs for a user"""
+    """Get all saved jobs for a user. Uses cache-first strategy."""
+    # Try cache first
+    cached = cache_service.get_saved_jobs(user_id)
+    if cached:
+        return [SavedJobResponse(**job) for job in cached]
+    
+    # Cache miss - fetch from DB
     supabase = get_supabase()
     
     result = supabase.table("saved_jobs").select("*").eq(
         "user_id", user_id
     ).order("created_at", desc=True).execute()
     
-    return [
+    jobs = [
         SavedJobResponse(
             id=job["id"],
             user_id=job["user_id"],
@@ -156,6 +169,11 @@ async def get_saved_jobs(user_id: str):
         )
         for job in result.data
     ]
+    
+    # Hydrate cache for future reads
+    cache_service.set_saved_jobs(user_id, [job.dict() for job in jobs])
+    
+    return jobs
 
 
 @router.delete("/remove/{job_id}")
@@ -163,7 +181,15 @@ async def remove_saved_job(job_id: str):
     """Remove a job from saved jobs"""
     supabase = get_supabase()
     
+    # Get user_id before delete for cache invalidation
+    job_result = supabase.table("saved_jobs").select("user_id").eq("id", job_id).execute()
+    user_id = job_result.data[0]["user_id"] if job_result.data else None
+    
     result = supabase.table("saved_jobs").delete().eq("id", job_id).execute()
+    
+    # Invalidate cache
+    if user_id:
+        cache_service.invalidate_saved_jobs(user_id)
     
     return {"status": "success", "message": "Job removed from saved jobs"}
 
@@ -210,6 +236,11 @@ async def update_progress(job_id: str, request: UpdateProgressRequest):
     
     if not update_result.data:
         raise HTTPException(status_code=500, detail="Failed to update progress")
+    
+    # Invalidate user's saved jobs cache
+    user_id = update_result.data[0].get("user_id") if update_result.data else None
+    if user_id:
+        cache_service.invalidate_saved_jobs(user_id)
     
     return {
         "status": "success",
@@ -429,6 +460,10 @@ Return ONLY valid JSON in this exact format:
         raise HTTPException(status_code=500, detail="Failed to save merged roadmap")
     
     saved = result.data[0]
+    
+    # Invalidate global roadmaps cache
+    cache_service.invalidate_global_roadmaps()
+    
     return GlobalRoadmapResponse(
         id=saved["id"],
         name=saved["name"],
@@ -440,12 +475,18 @@ Return ONLY valid JSON in this exact format:
 
 @router.get("/global-roadmaps/{user_id}", response_model=List[GlobalRoadmapResponse])
 async def get_global_roadmaps(user_id: str):
-    """Get all merged roadmaps (global roadmaps don't have user_id currently, returns all)"""
+    """Get all merged roadmaps. Uses cache-first strategy."""
+    # Try cache first
+    cached = cache_service.get_global_roadmaps()
+    if cached:
+        return [GlobalRoadmapResponse(**r) for r in cached]
+    
+    # Cache miss - fetch from DB
     supabase = get_supabase()
     
     result = supabase.table("global_roadmaps").select("*").order("created_at", desc=True).execute()
     
-    return [
+    roadmaps = [
         GlobalRoadmapResponse(
             id=r["id"],
             name=r["name"],
@@ -455,6 +496,11 @@ async def get_global_roadmaps(user_id: str):
         )
         for r in result.data
     ]
+    
+    # Hydrate cache
+    cache_service.set_global_roadmaps([r.dict() for r in roadmaps])
+    
+    return roadmaps
 
 
 @router.get("/global-roadmap/{roadmap_id}", response_model=GlobalRoadmapResponse)
@@ -483,6 +529,9 @@ async def delete_global_roadmap(roadmap_id: str):
     supabase = get_supabase()
     
     supabase.table("global_roadmaps").delete().eq("id", roadmap_id).execute()
+    
+    # Invalidate cache
+    cache_service.invalidate_global_roadmaps()
     
     return {"status": "success", "message": "Roadmap deleted"}
 

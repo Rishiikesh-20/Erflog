@@ -16,6 +16,9 @@ from typing import List, Dict, Optional, Any
 
 from supabase import create_client
 
+# Redis cache integration
+from services.cache_service import cache_service
+
 logger = logging.getLogger("LeetCodeService")
 
 
@@ -220,7 +223,8 @@ Return ONLY a JSON array of problem IDs, nothing else. Example: [1, 121, 217, 23
     
     def get_user_progress(self, user_id: str) -> Dict[str, Any]:
         """
-        Get user's LeetCode progress from database.
+        Get user's LeetCode progress.
+        Uses cache-first strategy with DB fallback.
         
         Args:
             user_id: User's UUID
@@ -228,6 +232,14 @@ Return ONLY a JSON array of problem IDs, nothing else. Example: [1, 121, 217, 23
         Returns:
             Dict with solved_problem_ids, quiz_answers, and total_solved
         """
+        # Try cache first
+        cached = cache_service.get_leetcode_progress(user_id)
+        if cached:
+            logger.debug(f"Cache HIT for leetcode_progress:{user_id}")
+            return cached
+        
+        # Cache miss - fetch from DB
+        logger.debug(f"Cache MISS for leetcode_progress:{user_id}, fetching from DB")
         try:
             response = self.supabase.table("leetcode_progress").select(
                 "solved_problem_ids, quiz_answers"
@@ -237,11 +249,14 @@ Return ONLY a JSON array of problem IDs, nothing else. Example: [1, 121, 217, 23
                 data = response.data[0]
                 solved_ids = data.get("solved_problem_ids") or []
                 quiz_answers = data.get("quiz_answers") or {}
-                return {
+                result = {
                     "solved_problem_ids": solved_ids,
                     "quiz_answers": quiz_answers,
                     "total_solved": len(solved_ids)
                 }
+                # Hydrate cache for future reads
+                cache_service.set_leetcode_progress(user_id, result)
+                return result
         except Exception as e:
             logger.warning(f"Failed to fetch progress: {e}")
         
@@ -259,6 +274,7 @@ Return ONLY a JSON array of problem IDs, nothing else. Example: [1, 121, 217, 23
     ) -> Dict[str, Any]:
         """
         Save user's LeetCode progress to database.
+        Uses write-through: DB first, then cache.
         
         Args:
             user_id: User's UUID
@@ -278,17 +294,22 @@ Return ONLY a JSON array of problem IDs, nothing else. Example: [1, 121, 217, 23
             if quiz_answers is not None:
                 update_data["quiz_answers"] = quiz_answers
             
-            # Upsert to handle both insert and update
+            # Upsert to handle both insert and update (DB first for consistency)
             self.supabase.table("leetcode_progress").upsert(
                 update_data,
                 on_conflict="user_id"
             ).execute()
             
-            return {
+            result = {
                 "solved_problem_ids": solved_problem_ids,
                 "quiz_answers": quiz_answers or {},
                 "total_solved": len(solved_problem_ids)
             }
+            
+            # Update cache after successful DB write (write-through)
+            cache_service.set_leetcode_progress(user_id, result)
+            
+            return result
         except Exception as e:
             logger.error(f"Failed to save progress: {e}")
             raise
