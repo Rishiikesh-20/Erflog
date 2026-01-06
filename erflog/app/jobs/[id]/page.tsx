@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import * as api from "@/lib/api";
-import { ArrowLeft, ExternalLink, Briefcase, Loader2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Briefcase, Loader2, Target, Trophy } from "lucide-react";
 // 1. IMPORT THE NEW COMPONENT
 import Roadmap from "@/components/MissionControl/Roadmap";
 // 2. IMPORT CORRECT TYPES
@@ -119,39 +119,41 @@ export default function JobDetailPage() {
   const matchPercentage = Math.round(job.score * 100);
 
   return (
-    <div className="min-h-screen bg-canvas py-12 px-8">
-      <button
-        onClick={() => router.push("/jobs")}
-        className="mb-8 flex items-center gap-2 text-secondary hover:text-ink transition-colors"
-      >
-        <ArrowLeft className="w-5 h-5" /> Back to Jobs
-      </button>
+    <div className="min-h-screen bg-gray-50 py-12 px-8">
+      <div className="max-w-6xl mx-auto">
+        <button
+          onClick={() => router.push("/jobs")}
+          className="mb-8 flex items-center gap-2 text-gray-600 hover:text-orange-600 transition-colors font-medium"
+        >
+          <ArrowLeft className="w-5 h-5" /> Back to Jobs
+        </button>
 
-      <div className="max-w-4xl mx-auto">
         {/* Job Header */}
-        <div className="bg-surface rounded-xl border border-[#E5E0D8] p-8 mb-6">
+        <div className="bg-white rounded-xl border-2 border-gray-200 p-8 mb-6 shadow-lg hover:shadow-xl transition-shadow">
           <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full flex items-center justify-center font-serif-bold text-2xl text-white bg-[#D95D39]">
+            <div className="flex items-center gap-6">
+              <div className="h-16 w-16 rounded-xl flex items-center justify-center font-bold text-2xl text-white bg-[#D95D39] shadow-lg">
                 {job.company.charAt(0)}
               </div>
               <div>
-                <h1 className="font-serif-bold text-3xl text-ink">
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">
                   {job.title}
                 </h1>
-                <p className="text-xl text-secondary mt-1 flex items-center gap-2">
-                  <Briefcase size={18} /> {job.company}
+                <p className="text-lg text-gray-600 flex items-center gap-2">
+                  <Briefcase size={18} className="text-[#D95D39]" /> {job.company}
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-3xl font-bold text-[#D95D39]">
-                {matchPercentage}%
+              <div className="px-5 py-3 bg-[#D95D39] rounded-xl shadow-lg">
+                <div className="text-3xl font-bold text-white">
+                  {matchPercentage}%
+                </div>
+                <div className="text-sm text-white font-medium">Match Score</div>
               </div>
-              <div className="text-sm text-secondary">Match Score</div>
               {job.needs_improvement && (
-                <span className="inline-block mt-2 px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
-                  Roadmap Available
+                <span className="inline-block mt-3 px-3 py-1.5 text-xs rounded-full bg-orange-100 text-orange-700 font-semibold border border-orange-300">
+                  📚 Roadmap Available
                 </span>
               )}
             </div>
@@ -159,11 +161,12 @@ export default function JobDetailPage() {
         </div>
 
         {/* Job Description */}
-        <div className="bg-surface rounded-xl border border-[#E5E0D8] p-6 mb-6">
-          <h2 className="font-serif-bold text-xl text-ink mb-4">
+        <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6 shadow-lg hover:shadow-xl transition-shadow">
+          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Briefcase className="w-5 h-5 text-[#D95D39]" />
             Job Description
           </h2>
-          <p className="text-secondary leading-relaxed whitespace-pre-line">
+          <p className="text-gray-700 leading-relaxed whitespace-pre-line">
             {job.summary || "No description available"}
           </p>
           {job.link && job.link !== "null" && (
@@ -171,7 +174,7 @@ export default function JobDetailPage() {
               href={job.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 mt-4 text-sm font-medium text-[#D95D39]"
+              className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-[#D95D39] text-white rounded-lg hover:bg-orange-700 transition-all font-medium"
             >
               View Original Posting <ExternalLink className="w-4 h-4" />
             </a>
@@ -182,15 +185,16 @@ export default function JobDetailPage() {
         {job.roadmap_details &&
           job.roadmap_details.missing_skills &&
           job.roadmap_details.missing_skills.length > 0 && (
-            <div className="bg-surface rounded-xl border border-[#E5E0D8] p-6 mb-6">
-              <h2 className="font-serif-bold text-xl text-ink mb-4">
+            <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6 shadow-lg hover:shadow-xl transition-shadow">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Target className="w-5 h-5 text-[#D95D39]" />
                 Skills to Develop
               </h2>
               <div className="flex flex-wrap gap-2">
                 {job.roadmap_details.missing_skills.map((skill, idx) => (
                   <span
                     key={idx}
-                    className="px-4 py-2 rounded-full text-sm font-medium bg-orange-100 text-[#D95D39]"
+                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-orange-50 text-orange-700 border-2 border-orange-200 hover:border-[#D95D39] transition-all"
                   >
                     {skill}
                   </span>
@@ -199,24 +203,28 @@ export default function JobDetailPage() {
             </div>
           )}
 
-        {/* --- ROADMAP SECTION --- */}
+        {/* Roadmap Section */}
         {job.roadmap_details && job.roadmap_details.graph ? (
-          <div className="bg-surface rounded-xl border border-[#E5E0D8] p-6 mb-6">
+          <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6 shadow-lg">
             <Roadmap data={job.roadmap_details as RoadmapDetails} savedJobId={savedJobId || undefined} userId={user?.id} />
           </div>
         ) : matchPercentage >= 80 ? (
-          <div className="bg-green-50 rounded-xl border border-green-200 p-6 mb-6 text-center">
-            <p className="text-green-700 font-medium">
-              🎉 Great Match! No additional learning needed.
+          <div className="bg-green-50 rounded-xl border-2 border-green-300 p-6 mb-6 text-center shadow-lg">
+            <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center mx-auto mb-3">
+              <Trophy className="w-6 h-6 text-white" />
+            </div>
+            <p className="text-green-800 font-bold text-lg mb-2">
+              🎉 Perfect Match! No additional learning needed.
             </p>
-            <p className="text-green-600 text-sm mt-1">
+            <p className="text-green-700">
               Your skills are well-aligned with this position.
             </p>
           </div>
         ) : (
-          <div className="bg-surface rounded-xl border border-dashed border-[#E5E0D8] p-8 text-center mb-6">
+          <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-8 text-center mb-6">
+            <Loader2 className="w-10 h-10 text-gray-400 mx-auto mb-3 animate-spin" />
             <p className="text-gray-500 italic">
-              Roadmap generation pending...
+              Roadmap generation in progress...
             </p>
           </div>
         )}
@@ -224,7 +232,7 @@ export default function JobDetailPage() {
         {/* Apply Button */}
         <button
           onClick={() => router.push(`/jobs/${job.id}/apply`)}
-          className="w-full py-4 rounded-xl font-medium text-white text-lg transition-all hover:opacity-90 bg-[#D95D39]"
+          className="w-full py-4 rounded-xl font-bold text-white text-lg transition-all hover:shadow-xl bg-[#D95D39] hover:bg-orange-700"
         >
           Apply Now
         </button>
