@@ -1,16 +1,14 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { supabase } from "./supabase";
 
-// API Base URL and Key
+// API Base URL - Direct to Cloud Run
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
-  params: API_KEY ? { key: API_KEY } : {}, // Add API key to all requests
 });
 
 // ============================================================================
