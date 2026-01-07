@@ -30,7 +30,7 @@ websockets>=13.0
 PyMuPDF==1.24.14
 requests>=2.32.3
 playwright==1.49.0
-browser-use==0.1.0
+browser-use>=0.11.2
 beautifulsoup4==4.12.3
 lxml==5.3.0
 langchain-anthropic

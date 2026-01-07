@@ -94,7 +94,7 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
     reason = "Initializing..."
     
     try:
-        # browser-use v0.11.x requires its own LLM wrappers
+        # browser-use v0.11.x has its own LLM wrappers with required 'provider' attribute
         from browser_use.llm.google import ChatGoogle
         
         llm = ChatGoogle(
