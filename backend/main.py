@@ -134,6 +134,74 @@ async def get_me(user=Depends(get_current_user)):
 
 
 # =============================================================================
+# Jobs API - Individual Job Details
+# =============================================================================
+from supabase import create_client
+
+def get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        return None
+    return create_client(url, key)
+
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_details(job_id: str):
+    """Get individual job details by ID"""
+    supabase = get_supabase()
+    if not supabase:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Database not configured"}
+        )
+    
+    try:
+        # Try to find in jobs table first
+        result = supabase.table("jobs").select("*").eq("id", int(job_id)).execute()
+        
+        if result.data and len(result.data) > 0:
+            job = result.data[0]
+            return {
+                "id": job.get("id"),
+                "title": job.get("title", "Job Position"),
+                "company": job.get("company", "Company"),
+                "location": job.get("location"),
+                "description": job.get("description"),
+                "link": job.get("link"),
+                "score": job.get("score"),
+                "type": job.get("type", "job")
+            }
+        
+        # If not found in jobs, try saved_jobs with original_job_id
+        saved_result = supabase.table("saved_jobs").select("*").eq("original_job_id", job_id).execute()
+        
+        if saved_result.data and len(saved_result.data) > 0:
+            job = saved_result.data[0]
+            return {
+                "id": job.get("original_job_id"),
+                "title": job.get("title", "Job Position"),
+                "company": job.get("company", "Company"),
+                "description": job.get("description"),
+                "link": job.get("link"),
+                "score": job.get("score")
+            }
+        
+        # Not found
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Job {job_id} not found"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching job {job_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+
+# =============================================================================
 # Entry Point
 # =============================================================================
 if __name__ == "__main__":

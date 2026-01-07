@@ -526,3 +526,72 @@ async def interview_voice_endpoint(websocket: WebSocket, job_id: str):
 
     except WebSocketDisconnect:
         logger.info(f"[Voice {interview_type}] Client Disconnected")
+        return
+    
+    # === INTERVIEW ENDED - PROCESS FEEDBACK OUTSIDE THE LOOP ===
+    logger.info(f"[Voice {interview_type}] Interview loop ended - processing feedback...")
+    
+    # Let frontend know we're processing
+    try:
+        await websocket.send_json({"type": "event", "event": "processing", "status": "start"})
+    except:
+        pass
+    
+    # Send goodbye audio
+    try:
+        goodbye_msg = "Thank you for your time today. We'll review your responses and provide feedback shortly."
+        await websocket.send_bytes(synthesize_audio_bytes(goodbye_msg))
+        await asyncio.sleep(3)
+    except:
+        pass
+    
+    # Run evaluation
+    try:
+        logger.info(f"[Voice] Running evaluation with user_id: {user_id[:8]}..., job_id: {job_id_clean}")
+        
+        # Directly run evaluation
+        final_result = await asyncio.to_thread(run_evaluation, result)
+        feedback = final_result.get("feedback")
+        
+        if feedback:
+            logger.info(f"✅ Feedback saved: {feedback.get('verdict')} - Score: {feedback.get('score')}")
+            await websocket.send_json({"type": "feedback", "data": feedback})
+            
+            verdict = feedback.get("verdict", "Thank you")
+            score = feedback.get("score", 0)
+            feedback_msg = f"{verdict}. Score: {score}. We'll be in touch soon."
+            await websocket.send_bytes(synthesize_audio_bytes(feedback_msg))
+            await asyncio.sleep(3)
+        else:
+            logger.warning("[Voice] No feedback returned from evaluation")
+            # Send empty feedback so frontend can still transition
+            await websocket.send_json({
+                "type": "feedback", 
+                "data": {
+                    "score": 0,
+                    "verdict": "Unable to evaluate",
+                    "summary": "An error occurred during evaluation. Please try again."
+                }
+            })
+    except Exception as eval_error:
+        logger.error(f"Evaluation error: {eval_error}")
+        import traceback
+        traceback.print_exc()
+        # Send error feedback
+        try:
+            await websocket.send_json({
+                "type": "feedback",
+                "data": {
+                    "score": 0,
+                    "verdict": "Evaluation Error",
+                    "summary": f"Error: {str(eval_error)}"
+                }
+            })
+        except:
+            pass
+    
+    # Clean close
+    try:
+        await websocket.close()
+    except:
+        pass

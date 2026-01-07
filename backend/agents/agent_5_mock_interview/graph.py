@@ -410,8 +410,73 @@ Return JSON only:
         import traceback
         traceback.print_exc()
     
+    # ==========================================================================
+    # FEEDBACK LOOP: Enhance roadmap based on interview improvements
+    # ==========================================================================
+    if user_id and feedback.get("improvements"):
+        try:
+            import httpx
+            
+            print(f"{log_prefix} 🔄 Triggering Feedback Loop - Enhancing roadmap...")
+            
+            # Build the enhancement request
+            enhancement_payload = {
+                "user_id": user_id,
+                "improvements": feedback.get("improvements", []),
+                "job_context": {
+                    "title": ctx.get('job', {}).get('title', 'Unknown'),
+                    "company": ctx.get('job', {}).get('company', 'Unknown'),
+                }
+            }
+            
+            # Call the enhancement endpoint (internal call)
+            # Using sync httpx since we're in a sync function
+            api_base = os.getenv("API_BASE_URL", "http://localhost:8000")
+            
+            with httpx.Client(timeout=180.0) as client:
+                response = client.post(
+                    f"{api_base}/api/saved-jobs/enhance-roadmap-from-feedback",
+                    json=enhancement_payload
+                )
+                
+                if response.status_code == 200:
+                    enhancement_result = response.json()
+                    print(f"[DEBUG] Enhancement response keys: {enhancement_result.keys()}")
+                    roadmap_additions = enhancement_result.get("additions", [])
+                    print(f"[DEBUG] roadmap_additions count: {len(roadmap_additions)}")
+                    
+                    # Add roadmap additions to feedback for frontend display
+                    feedback["roadmap_additions"] = {
+                        "nodes": roadmap_additions,
+                        "message": enhancement_result.get("message", ""),
+                        "roadmap_id": enhancement_result.get("roadmap_id")
+                    }
+                    print(f"[DEBUG] feedback now has roadmap_additions: {feedback.get('roadmap_additions', {}).get('nodes', [])[:1]}...")
+                    
+                    print(f"✅ {log_prefix} Feedback Loop Complete - Added {len(roadmap_additions)} learning blocks")
+                    
+                    # Update the interview record in database with roadmap_additions
+                    if job_id_int:
+                        try:
+                            db_manager.get_client().table("interviews").update({
+                                "feedback_report": feedback
+                            }).eq("user_id", user_id).eq("job_id", job_id_int).order("created_at", desc=True).limit(1).execute()
+                            print(f"✅ {log_prefix} Updated interview record with roadmap additions")
+                        except Exception as update_error:
+                            print(f"⚠️ {log_prefix} Failed to update interview with roadmap: {update_error}")
+                else:
+                    print(f"⚠️ {log_prefix} Feedback Loop Error: {response.status_code} - {response.text[:200]}")
+                    
+        except Exception as feedback_loop_error:
+            print(f"⚠️ {log_prefix} Feedback Loop Failed: {feedback_loop_error}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail the whole evaluation if feedback loop fails
+    
     print(f"{log_prefix} Complete - Verdict: {feedback.get('verdict')}, Score: {feedback.get('score')}")
+    print(f"[DEBUG] Final feedback has roadmap_additions: {'roadmap_additions' in feedback}, nodes count: {len(feedback.get('roadmap_additions', {}).get('nodes', []))}")
     return {"feedback": feedback, "stage": "end"}
+
 
 # Build workflow graphs
 def _build_graph(checkpointer):
