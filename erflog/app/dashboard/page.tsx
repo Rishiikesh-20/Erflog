@@ -394,9 +394,12 @@ export default function Dashboard() {
             setIsColdStarting(false);
           }
         } else {
-          // Normal dashboard load - has data
+          // Normal dashboard load - has data from cache
+          // Skip the agent overlay since data is already available
           setInsights(data);
           setProfile({ name: data.user_name || "User" });
+          setIsInitializing(false); // Skip agent terminal animation
+          setShowJobs(true); // Jobs are ready immediately
         }
         
         const newSessionId = "session-" + Date.now();
@@ -415,30 +418,19 @@ export default function Dashboard() {
             updatedSkills: [],
             fromCache: true,
           });
-        } else if (data.profile_strength > 0 && !isColdStarting) {
-          // No cache but user has profile - run FULL GitHub sync (same as clicking button)
-          console.log("[Dashboard] No GitHub cache found, running full sync...");
-          try {
-            const result = await api.syncGitHubPerception();
-            if (result.status === "success" && result.insights) {
-              setSyncResult({
-                insights: result.insights,
-                newSkills: result.new_skills || [],
-                updatedSkills: result.updated_skills || [],
-                fromCache: result.from_cache || false,
-              });
-            }
-          } catch (syncErr) {
-            console.log("[Dashboard] Auto-sync skipped:", syncErr);
-          }
         }
 
       } catch (err) {
         console.error("Failed to fetch dashboard:", err);
         setError("Failed to load dashboard. Please try again.");
       } finally {
+        // CRITICAL: Set loading to false IMMEDIATELY so dashboard renders
         setIsLoading(false);
       }
+      
+      // NOTE: GitHub sync is now MANUAL ONLY
+      // Users click the "Sync GitHub" button to trigger sync
+      // No automatic sync on dashboard load - this keeps page load fast
     };
 
     if (!authLoading) {
@@ -889,24 +881,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#F7F5F0]">
-      {/* ==================== 1. Header ==================== */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#D95D39] rounded-xl flex items-center justify-center">
-              <Bot className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-gray-900">Erflog</h1>
-              <p className="text-xs text-gray-500">AI Career Platform</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-             <button onClick={() => router.push("/settings")} className="p-2 text-gray-600 hover:text-gray-900"><Settings className="w-5 h-5" /></button>
-             <button onClick={() => signOut()} className="p-2 text-red-600 hover:bg-red-50 rounded"><LogOut className="w-5 h-5" /></button>
-          </div>
-        </div>
-      </header>
 
       {/* ==================== 2. Agent Overlay (Onboarding) ==================== */}
       <AnimatePresence>

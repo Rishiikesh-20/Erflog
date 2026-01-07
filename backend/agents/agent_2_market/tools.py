@@ -699,7 +699,7 @@ def optimize_roles_with_llm(
         return roles
     
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         
         prompt = f"""You are a job market analyst. Given these target roles and skills from multiple users, 
 select at most {max_roles} distinct job roles that best cover all users collectively.
@@ -763,7 +763,7 @@ def generate_search_queries_with_llm(
         List of search query strings
     """
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         
         type_prompts = {
             "jobs": f"""Generate {min(5, len(roles))} optimized job search queries for these roles and skills.

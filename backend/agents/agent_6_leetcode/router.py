@@ -113,7 +113,8 @@ async def save_progress(
         data = leetcode_service.save_user_progress(
             user_id=user_id,
             solved_problem_ids=request.solved_problem_ids,
-            quiz_answers=request.quiz_answers
+            quiz_answers=request.quiz_answers,
+            user_email=user.get("email")
         )
         
         return ProgressResponse(

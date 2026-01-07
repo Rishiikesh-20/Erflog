@@ -270,7 +270,8 @@ Return ONLY a JSON array of problem IDs, nothing else. Example: [1, 121, 217, 23
         self,
         user_id: str,
         solved_problem_ids: List[int],
-        quiz_answers: Optional[Dict[str, str]] = None
+        quiz_answers: Optional[Dict[str, str]] = None,
+        user_email: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Save user's LeetCode progress to database.
@@ -280,11 +281,22 @@ Return ONLY a JSON array of problem IDs, nothing else. Example: [1, 121, 217, 23
             user_id: User's UUID
             solved_problem_ids: List of solved problem IDs
             quiz_answers: Optional quiz answers to save
+            user_email: Optional email to sync to users table if missing
             
         Returns:
             Dict with saved data
         """
         try:
+            # OPTIONAL: Ensure user exists in public.users to avoid FK errors
+            if user_email:
+                try:
+                    self.supabase.table("users").upsert({
+                        "id": user_id,
+                        "email": user_email
+                    }).execute()
+                except Exception as user_err:
+                    # Log but continue - table might not exist or have different schema
+                    logger.warning(f"Could not sync user to public table: {user_err}")
             update_data = {
                 "user_id": user_id,
                 "solved_problem_ids": solved_problem_ids,

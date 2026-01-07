@@ -138,6 +138,50 @@ export default function ProblemSolvingPage() {
                     if (hasSolvedProblems || hasQuizAnswers) {
                         setHasExistingProgress(true);
                         setCurrentStep("results");
+                        
+                        // Try to restore LeetCode profile data from localStorage
+                        const savedUsername = localStorage.getItem('leetcode_username');
+                        const savedProfile = localStorage.getItem('leetcode_profile');
+                        const savedContestInfo = localStorage.getItem('leetcode_contest');
+                        const savedSubmissions = localStorage.getItem('leetcode_submissions');
+                        
+                        console.log('[DEBUG] Restoring from localStorage:', {
+                            hasUsername: !!savedUsername,
+                            hasProfile: !!savedProfile,
+                            hasContestInfo: !!savedContestInfo,
+                            hasSubmissions: !!savedSubmissions
+                        });
+                        
+                        if (savedProfile) {
+                            try {
+                                const profileData = JSON.parse(savedProfile);
+                                setProfile(profileData);
+                                setUsername(savedUsername || "");
+                                console.log('[DEBUG] Profile restored:', profileData.username);
+                            } catch (e) {
+                                console.error('[DEBUG] Failed to parse profile:', e);
+                            }
+                        }
+                        
+                        if (savedContestInfo) {
+                            try {
+                                const contestData = JSON.parse(savedContestInfo);
+                                setContestInfo(contestData);
+                                console.log('[DEBUG] Contest info restored:', contestData);
+                            } catch (e) {
+                                console.error('[DEBUG] Failed to parse contest info:', e);
+                            }
+                        }
+                        
+                        if (savedSubmissions) {
+                            try {
+                                const submissionsData = JSON.parse(savedSubmissions);
+                                setRecentSubmissions(submissionsData);
+                                console.log('[DEBUG] Submissions restored:', submissionsData.length);
+                            } catch (e) {
+                                console.error('[DEBUG] Failed to parse submissions:', e);
+                            }
+                        }
                     } else {
                         setHasExistingProgress(false);
                     }
@@ -214,21 +258,29 @@ export default function ProblemSolvingPage() {
         try {
             const profileData = await leetcodeAPI.getUserProfile(username);
             setProfile(profileData);
+            
+            // Save to localStorage
+            localStorage.setItem('leetcode_username', username);
+            localStorage.setItem('leetcode_profile', JSON.stringify(profileData));
 
             await delay(300);
             try {
                 const contestData = await leetcodeAPI.getContestInfo(username);
                 setContestInfo(contestData);
+                localStorage.setItem('leetcode_contest', JSON.stringify(contestData));
             } catch {
                 setContestInfo(null);
+                localStorage.removeItem('leetcode_contest');
             }
 
             await delay(300);
             try {
                 const submissionsData = await leetcodeAPI.getRecentSubmissions(username);
                 setRecentSubmissions(submissionsData || []);
+                localStorage.setItem('leetcode_submissions', JSON.stringify(submissionsData || []));
             } catch {
                 setRecentSubmissions([]);
+                localStorage.removeItem('leetcode_submissions');
             }
 
             // Move to quiz step
@@ -482,58 +534,65 @@ export default function ProblemSolvingPage() {
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="space-y-6"
+                        className="max-w-3xl mx-auto"
                     >
-                        {/* Profile Summary */}
+                        {/* Profile Summary - Modern Card */}
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="bg-white rounded-2xl p-6 shadow-lg border-2 border-gray-200 flex items-center gap-4"
+                            className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6"
                         >
-                            <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-[#D95D39] shadow-md">
-                                <img
-                                    src={profile.profile?.userAvatar || "/default-avatar.png"}
-                                    alt={profile.username}
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
-                            <div className="flex-1">
-                                <h2 className="text-xl font-bold text-gray-900">
-                                    {profile.profile?.realName || profile.username}
-                                </h2>
-                                <p className="text-gray-600 text-sm font-medium">
-                                    {getTotalSolved()} problems solved
-                                </p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-3xl font-bold text-[#D95D39]">
-                                    {currentCardIndex + 1}/{categories.length}
-                                </p>
-                                <p className="text-xs text-gray-500 font-medium">Progress</p>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="relative">
+                                        <div className="w-16 h-16 rounded-2xl overflow-hidden ring-2 ring-[#D95D39] ring-offset-2">
+                                            <img
+                                                src={profile.profile?.userAvatar || "/default-avatar.png"}
+                                                alt={profile.username}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-900">
+                                            {profile.profile?.realName || profile.username}
+                                        </h2>
+                                        <p className="text-sm text-gray-500">
+                                            {getTotalSolved()} problems solved
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right bg-gradient-to-br from-[#D95D39] to-[#c54d2d] text-white px-6 py-3 rounded-2xl shadow-lg">
+                                    <p className="text-3xl font-bold">
+                                        {currentCardIndex + 1}/{categories.length}
+                                    </p>
+                                    <p className="text-xs opacity-90 font-medium">Progress</p>
+                                </div>
                             </div>
                         </motion.div>
 
-                        {/* Progress Dots */}
-                        <div className="flex justify-center gap-2">
+                        {/* Progress Dots - Enhanced */}
+                        <div className="flex justify-center gap-2 mb-8">
                             {categories.map((_: LeetCodeCategory, idx: number) => (
                                 <button
                                     key={idx}
                                     onClick={() => setCurrentCardIndex(idx)}
-                                    className={`w-3 h-3 rounded-full transition-all ${idx === currentCardIndex ? 'scale-125' : 'opacity-50 hover:opacity-75'
-                                        }`}
+                                    className={`h-2 rounded-full transition-all duration-300 ${
+                                        idx === currentCardIndex ? 'w-8 scale-110' : 'w-2 opacity-40 hover:opacity-70'
+                                    }`}
                                     style={{
                                         backgroundColor: quizAnswers[categories[idx].name]
-                                            ? (quizAnswers[categories[idx].name] === 'weak' ? '#DC2626'
-                                                : quizAnswers[categories[idx].name] === 'okay' ? '#D97706'
-                                                    : '#16A34A')
-                                            : idx === currentCardIndex ? '#D95D39' : '#E5E0D8'
+                                            ? (quizAnswers[categories[idx].name] === 'weak' ? '#EF4444'
+                                                : quizAnswers[categories[idx].name] === 'okay' ? '#F59E0B'
+                                                    : '#10B981')
+                                            : idx === currentCardIndex ? '#D95D39' : '#D1D5DB'
                                     }}
                                 />
                             ))}
                         </div>
 
                         {/* Animated Card Stack */}
-                        <div className="relative h-[400px] flex items-center justify-center perspective-1000">
+                        <div className="relative min-h-[480px] flex items-center justify-center">
                             <AnimatePresence mode="wait" custom={1}>
                                 <motion.div
                                     key={currentCardIndex}
@@ -542,82 +601,98 @@ export default function ProblemSolvingPage() {
                                     initial="enter"
                                     animate="center"
                                     exit="exit"
-                                    className="absolute w-full max-w-md"
+                                    className="w-full"
                                 >
-                                    <div
-                                        className="bg-white rounded-3xl p-10 shadow-2xl border-4"
-                                        style={{ borderColor: currentCategory.color }}
-                                    >
-                                        {/* Card Header */}
-                                        <div className="flex items-center gap-4 mb-8">
-                                            <div
-                                                className="w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg"
-                                                style={{ backgroundColor: `${currentCategory.color}20` }}
-                                            >
-                                                {(() => {
-                                                    const IconComponent = categoryIcons[currentCategory.icon] || Layers;
-                                                    return <IconComponent className="w-10 h-10" style={{ color: currentCategory.color }} />;
-                                                })()}
-                                            </div>
-                                            <div>
-                                                <h3 className="text-3xl font-bold text-gray-900">{currentCategory.name}</h3>
-                                                <p className="text-gray-600 font-medium">{currentCategory.problems.length} problems</p>
+                                    <div className="bg-white rounded-3xl p-10 shadow-xl border-2 border-gray-100">
+                                        {/* Card Header - Centered */}
+                                        <div className="text-center mb-8">
+                                            <div className="inline-flex items-center gap-4 mb-6">
+                                                <div
+                                                    className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-md"
+                                                    style={{ backgroundColor: `${currentCategory.color}15` }}
+                                                >
+                                                    {(() => {
+                                                        const IconComponent = categoryIcons[currentCategory.icon] || Layers;
+                                                        return <IconComponent className="w-8 h-8" style={{ color: currentCategory.color }} />;
+                                                    })()}
+                                                </div>
+                                                <div className="text-left">
+                                                    <h3 className="text-2xl font-bold text-gray-900">{currentCategory.name}</h3>
+                                                    <p className="text-sm text-gray-500">{currentCategory.problems.length} problems</p>
+                                                </div>
                                             </div>
                                         </div>
 
                                         {/* Question */}
-                                        <p className="text-xl text-gray-700 mb-10 text-center font-medium">
-                                            How confident are you with <span className="font-bold" style={{ color: currentCategory.color }}>{currentCategory.name}</span> problems?
+                                        <p className="text-center text-gray-700 text-lg mb-8 leading-relaxed">
+                                            How confident are you with{' '}
+                                            <span className="font-bold text-gray-900">{currentCategory.name}</span>{' '}
+                                            problems?
                                         </p>
 
                                         {/* Answer Buttons */}
-                                        <div className="space-y-3">
+                                        <div className="space-y-4">
                                             <motion.button
                                                 whileHover={{ scale: 1.02 }}
                                                 whileTap={{ scale: 0.98 }}
                                                 onClick={() => setQuizAnswer(currentCategory.name, "weak")}
-                                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl transition-all ${quizAnswers[currentCategory.name] === "weak" ? "ring-2 ring-offset-2" : ""
-                                                    }`}
-                                                style={{
-                                                    backgroundColor: quizAnswers[currentCategory.name] === "weak" ? "#FEE2E2" : "#FEF2F2",
-                                                    color: "#DC2626",
-                                                    ...(quizAnswers[currentCategory.name] === "weak" && { ringColor: "#DC2626" })
-                                                }}
+                                                className={`w-full py-6 px-6 rounded-2xl transition-all duration-200 ${
+                                                    quizAnswers[currentCategory.name] === "weak" 
+                                                        ? "bg-red-100 border-2 border-red-500 shadow-lg" 
+                                                        : "bg-red-50 border-2 border-transparent hover:border-red-300"
+                                                }`}
                                             >
-                                                <ThumbsDown className="w-5 h-5" />
-                                                <span className="font-medium">Weak - Need more practice</span>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-14 h-14 bg-red-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md">
+                                                        <ThumbsDown className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="flex-1 text-left">
+                                                        <p className="font-bold text-xl text-red-700 mb-1">Weak</p>
+                                                        <p className="text-sm text-red-600">Need more practice</p>
+                                                    </div>
+                                                </div>
                                             </motion.button>
 
                                             <motion.button
                                                 whileHover={{ scale: 1.02 }}
                                                 whileTap={{ scale: 0.98 }}
                                                 onClick={() => setQuizAnswer(currentCategory.name, "okay")}
-                                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl transition-all ${quizAnswers[currentCategory.name] === "okay" ? "ring-2 ring-offset-2" : ""
-                                                    }`}
-                                                style={{
-                                                    backgroundColor: quizAnswers[currentCategory.name] === "okay" ? "#FEF3C7" : "#FFFBEB",
-                                                    color: "#D97706",
-                                                    ...(quizAnswers[currentCategory.name] === "okay" && { ringColor: "#D97706" })
-                                                }}
+                                                className={`w-full py-6 px-6 rounded-2xl transition-all duration-200 ${
+                                                    quizAnswers[currentCategory.name] === "okay" 
+                                                        ? "bg-amber-100 border-2 border-amber-500 shadow-lg" 
+                                                        : "bg-amber-50 border-2 border-transparent hover:border-amber-300"
+                                                }`}
                                             >
-                                                <Meh className="w-5 h-5" />
-                                                <span className="font-medium">Okay - Can solve most</span>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-14 h-14 bg-amber-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md">
+                                                        <Meh className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="flex-1 text-left">
+                                                        <p className="font-bold text-xl text-amber-700 mb-1">Okay</p>
+                                                        <p className="text-sm text-amber-600">Can solve most</p>
+                                                    </div>
+                                                </div>
                                             </motion.button>
 
                                             <motion.button
                                                 whileHover={{ scale: 1.02 }}
                                                 whileTap={{ scale: 0.98 }}
                                                 onClick={() => setQuizAnswer(currentCategory.name, "strong")}
-                                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl transition-all ${quizAnswers[currentCategory.name] === "strong" ? "ring-2 ring-offset-2" : ""
-                                                    }`}
-                                                style={{
-                                                    backgroundColor: quizAnswers[currentCategory.name] === "strong" ? "#DCFCE7" : "#F0FDF4",
-                                                    color: "#16A34A",
-                                                    ...(quizAnswers[currentCategory.name] === "strong" && { ringColor: "#16A34A" })
-                                                }}
+                                                className={`w-full py-6 px-6 rounded-2xl transition-all duration-200 ${
+                                                    quizAnswers[currentCategory.name] === "strong" 
+                                                        ? "bg-green-100 border-2 border-green-500 shadow-lg" 
+                                                        : "bg-green-50 border-2 border-transparent hover:border-green-300"
+                                                }`}
                                             >
-                                                <ThumbsUp className="w-5 h-5" />
-                                                <span className="font-medium">Strong - Very confident</span>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md">
+                                                        <ThumbsUp className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="flex-1 text-left">
+                                                        <p className="font-bold text-xl text-green-700 mb-1">Strong</p>
+                                                        <p className="text-sm text-green-600">Very confident</p>
+                                                    </div>
+                                                </div>
                                             </motion.button>
                                         </div>
                                     </div>
@@ -712,6 +787,71 @@ export default function ProblemSolvingPage() {
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* Contest Performance - Only show if contest data exists */}
+                        {contestInfo && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 }}
+                                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
+                            >
+                                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Trophy className="w-5 h-5 text-[#D95D39]" />
+                                    Contest Performance
+                                </h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="text-center p-4 bg-gray-50 rounded-xl">
+                                        <p className="text-sm text-gray-600 mb-1">Contests</p>
+                                        <p className="text-2xl font-bold text-gray-900">{contestInfo.userContestRanking?.attendedContestsCount || 0}</p>
+                                    </div>
+                                    <div className="text-center p-4 bg-gray-50 rounded-xl">
+                                        <p className="text-sm text-gray-600 mb-1">Rating</p>
+                                        <p className="text-2xl font-bold text-[#D95D39]">{Math.round(contestInfo.userContestRanking?.rating || 0)}</p>
+                                    </div>
+                                    <div className="text-center p-4 bg-gray-50 rounded-xl">
+                                        <p className="text-sm text-gray-600 mb-1">Global Rank</p>
+                                        <p className="text-2xl font-bold text-gray-900">#{contestInfo.userContestRanking?.globalRanking?.toLocaleString() || 'N/A'}</p>
+                                    </div>
+                                    <div className="text-center p-4 bg-gray-50 rounded-xl">
+                                        <p className="text-sm text-gray-600 mb-1">Top %</p>
+                                        <p className="text-2xl font-bold text-gray-900">{contestInfo.userContestRanking?.topPercentage?.toFixed(2) || 'N/A'}%</p>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* Recent Submissions - Only show if submissions exist */}
+                        {recentSubmissions && recentSubmissions.length > 0 && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.2 }}
+                                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
+                            >
+                                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Clock className="w-5 h-5 text-[#D95D39]" />
+                                    Recent Submissions
+                                </h3>
+                                <div className="space-y-2">
+                                    {recentSubmissions.slice(0, 5).map((submission, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                                            <div className="flex-1">
+                                                <p className="font-medium text-gray-900 text-sm">{submission.title}</p>
+                                                <p className="text-xs text-gray-500">{submission.lang} • {new Date(parseInt(submission.timestamp) * 1000).toLocaleDateString()}</p>
+                                            </div>
+                                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                                submission.statusDisplay === 'Accepted' 
+                                                    ? 'bg-green-100 text-green-700' 
+                                                    : 'bg-red-100 text-red-700'
+                                            }`}>
+                                                {submission.statusDisplay}
+                                            </span>
+                                        </div>
+                                    ))}
                                 </div>
                             </motion.div>
                         )}

@@ -239,8 +239,8 @@ export default function HomePage() {
               },
               {
                 icon: Zap,
-                title: "24/7 Job Matching",
-                desc: "AI agents continuously scan the market to find jobs that match your skills and career goals.",
+                title: "Notification Service",
+                desc: "We are giving personalized job matching, evolution, from feedback given from the interview.",
               },
               {
                 icon: Brain,

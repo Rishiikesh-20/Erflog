@@ -172,7 +172,10 @@ export default function Sidebar() {
         className="border-t border-surface p-4"
         style={{ borderColor: "#E5E0D8" }}
       >
-        <div className="flex items-center gap-3">
+        <Link 
+          href="/settings"
+          className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/50 transition-colors cursor-pointer"
+        >
           {userMetadata.avatarUrl ? (
             <Image
               src={userMetadata.avatarUrl}
@@ -200,7 +203,7 @@ export default function Sidebar() {
                 : "Not signed in"}
             </p>
           </div>
-        </div>
+        </Link>
       </div>
     </aside>
   );

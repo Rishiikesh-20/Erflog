@@ -18,6 +18,7 @@ import {
   Loader2,
   ExternalLink,
   RefreshCw,
+  LogOut,
 } from "lucide-react";
 
 export default function Settings() {
@@ -494,6 +495,32 @@ export default function Settings() {
               creates personalized learning roadmaps to help you achieve your
               career goals.
             </p>
+          </motion.div>
+
+          {/* Logout Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="bg-white rounded-xl border border-red-100 p-6 shadow-sm"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
+                <LogOut className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-lg text-gray-900">Account</h2>
+                <p className="text-sm text-gray-500">Sign out of your account</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => signOut()}
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+              Sign Out
+            </button>
           </motion.div>
         </div>
       </div>

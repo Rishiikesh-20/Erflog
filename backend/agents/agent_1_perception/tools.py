@@ -231,7 +231,7 @@ def generate_skill_quiz(skill_name: str, level: str = "intermediate") -> Optiona
     
     # 1. Initialize LLM
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",  # Switched to 1.5-flash
+        model="gemini-2.0-flash",  # Switched to 1.5-flash
         temperature=0.7,  # Slight creativity for varied questions
         google_api_key=api_key
     )
@@ -323,7 +323,7 @@ def generate_onboarding_questions(
     
     # 1. Initialize LLM
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash",
         temperature=0.7,
         google_api_key=api_key
     )

@@ -34,8 +34,8 @@ class ProfileResponse(BaseModel):
 
 class EducationItem(BaseModel):
     """Education entry"""
-    institution: str
-    degree: str
+    institution: Optional[str] = None
+    degree: Optional[str] = None
     course: Optional[str] = None
     year: Optional[str] = None
 

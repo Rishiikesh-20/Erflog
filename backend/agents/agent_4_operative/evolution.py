@@ -23,7 +23,7 @@ def analyze_rejection(job_desc: str, resume_content: dict) -> str:
         A concise gap analysis string identifying missing skills or gaps.
     """
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash",
         google_api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0.3
     )

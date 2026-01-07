@@ -45,6 +45,15 @@ def generate_email_html(user_name: str, jobs: list, hackathons: list, news: list
     """
     Generate a beautiful, mobile-responsive HTML email template for daily digest.
     """
+    # Calculate counts and empty states
+    jobs_count = len(jobs)
+    hackathons_count = len(hackathons)
+    news_count = len(news)
+    
+    jobs_empty_display = "none" if jobs else "block"
+    hackathons_empty_display = "none" if hackathons else "block"
+    news_empty_display = "none" if news else "block"
+
     # Format jobs section
     jobs_html = ""
     for job in jobs[:2]:
@@ -173,7 +182,7 @@ def generate_email_html(user_name: str, jobs: list, hackathons: list, news: list
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="x-apple-disable-message-reformatting">
     <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
-    <title>Your Daily Career Digest</title>
+    <title>Your Daily Career Digest - Erflog</title>
     <!--[if mso]>
     <noscript>
         <xml>
@@ -190,85 +199,199 @@ def generate_email_html(user_name: str, jobs: list, hackathons: list, news: list
         img {{ border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }}
         body {{ margin: 0 !important; padding: 0 !important; width: 100% !important; }}
         a[x-apple-data-detectors] {{ color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }}
+        
         @media only screen and (max-width: 600px) {{
             .mobile-padding {{ padding-left: 16px !important; padding-right: 16px !important; }}
             .mobile-full-width {{ width: 100% !important; }}
+            .mobile-text-center {{ text-align: center !important; }}
+            .mobile-font-large {{ font-size: 28px !important; }}
+            .mobile-font-medium {{ font-size: 16px !important; }}
+            .mobile-hide {{ display: none !important; }}
+            .mobile-card {{ padding: 16px !important; }}
+        }}
+        
+        @media only screen and (min-width: 601px) {{
+            .desktop-only {{ display: block !important; }}
+        }}
+        
+        .gradient-bg {{
+            background: linear-gradient(135deg, #D95D39 0%, #F18F01 50%, #c54d2d 100%);
+        }}
+        
+        .card-hover:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(217, 93, 57, 0.15);
         }}
     </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+<body style="margin: 0; padding: 0; background: linear-gradient(180deg, #f5f7fa 0%, #e8ecf1 100%); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    
+    <!-- Preheader Text -->
+    <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">
+        Your personalized career opportunities await! Discover curated jobs, hackathons, and industry insights.
+    </div>
     
     <!-- Wrapper -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background: linear-gradient(180deg, #f5f7fa 0%, #e8ecf1 100%);">
         <tr>
-            <td align="center" style="padding: 24px 16px;">
+            <td align="center" style="padding: 32px 16px;">
                 
                 <!-- Main Container -->
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 560px;" class="mobile-full-width">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 640px; box-shadow: 0 20px 60px rgba(0,0,0,0.12);" class="mobile-full-width">
+                    
+                    <!-- Decorative Top Bar -->
+                    <tr>
+                        <td style="background: linear-gradient(90deg, #D95D39, #F18F01, #D95D39); height: 6px; border-radius: 20px 20px 0 0;"></td>
+                    </tr>
                     
                     <!-- Header -->
                     <tr>
-                        <td style="background: linear-gradient(135deg, #D95D39 0%, #c54d2d 100%); border-radius: 20px 20px 0 0; padding: 36px 24px; text-align: center;">
-                            <h1 style="margin: 0; color: white; font-size: 32px; font-weight: 800; letter-spacing: -0.5px;">🚀 Erflog</h1>
-                            <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.9); font-size: 15px; font-weight: 500;">Your Daily Career Digest</p>
+                        <td style="background: linear-gradient(135deg, #D95D39 0%, #F18F01 50%, #c54d2d 100%); padding: 48px 32px; text-align: center; position: relative;">
+                            <!-- Animated Background Pattern -->
+                            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.1; background-image: radial-gradient(circle, white 1px, transparent 1px); background-size: 20px 20px;"></div>
+                            
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td style="position: relative; z-index: 1;">
+                                        <div style="display: inline-block; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border-radius: 20px; padding: 16px 28px; margin-bottom: 16px;">
+                                            <h1 style="margin: 0; color: white; font-size: 42px; font-weight: 900; letter-spacing: -1px; text-shadow: 0 2px 12px rgba(0,0,0,0.2);" class="mobile-font-large">🚀 Erflog</h1>
+                                        </div>
+                                        <p style="margin: 8px 0 20px 0; color: rgba(255,255,255,0.95); font-size: 17px; font-weight: 600; letter-spacing: 0.5px;">AI-Powered Career Platform</p>
+                                        <div style="margin-top: 20px;">
+                                            <a href="https://erflog.vercel.app" style="display: inline-block; background: white; color: #D95D39; text-decoration: none; padding: 14px 32px; border-radius: 50px; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); transition: transform 0.2s;">
+                                                ✨ Visit Dashboard
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     
                     <!-- Body -->
                     <tr>
-                        <td style="background: #ffffff; padding: 32px 24px;" class="mobile-padding">
+                        <td style="background: #ffffff; padding: 40px 32px;" class="mobile-padding">
                             
-                            <!-- Greeting -->
+                            <!-- Greeting Section -->
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                 <tr>
-                                    <td style="padding: 0 0 24px 0;">
-                                        <h2 style="margin: 0; color: #1a1a1a; font-size: 22px; font-weight: 700;">Hi {user_name}! 👋</h2>
-                                        <p style="margin: 12px 0 0 0; color: #666666; font-size: 15px; line-height: 1.6;">Here are today's AI-curated opportunities just for you.</p>
+                                    <td style="padding: 0 0 32px 0;">
+                                        <div style="background: linear-gradient(135deg, #FFF5F0 0%, #FFE8E0 100%); border-left: 5px solid #D95D39; border-radius: 12px; padding: 24px;">
+                                            <h2 style="margin: 0 0 8px 0; color: #1a1a1a; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;" class="mobile-font-medium">Hello, {user_name}! 👋</h2>
+                                            <p style="margin: 0; color: #555555; font-size: 16px; line-height: 1.7;">Your personalized career digest is ready! We've curated the best opportunities and insights tailored specifically for your career journey.</p>
+                                        </div>
                                     </td>
                                 </tr>
                             </table>
                             
                             <!-- Jobs Section -->
-                            {"" if not jobs_html else f'''
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 32px;">
                                 <tr>
-                                    <td style="padding: 0 0 16px 0;">
-                                        <h3 style="margin: 0; color: #1a1a1a; font-size: 18px; font-weight: 700;">💼 Top Job Matches</h3>
+                                    <td>
+                                        <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                                            <div style="background: linear-gradient(135deg, #4A90E2, #357ABD); width: 48px; height: 48px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; margin-right: 14px; box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);">
+                                                <span style="font-size: 24px;">💼</span>
+                                            </div>
+                                            <h3 style="margin: 0; color: #1a1a1a; font-size: 22px; font-weight: 800; letter-spacing: -0.3px;">Top Job Matches</h3>
+                                        </div>
+                                        
+                                        <!-- Job Cards Container -->
+                                        <div style="margin-top: 16px;">
+                                            {jobs_html}
+                                        </div>
+                                        
+                                        <!-- Empty State -->
+                                        <div style="display: {jobs_empty_display}; text-align: center; padding: 32px; background: #f8f9fa; border-radius: 12px; border: 2px dashed #dee2e6;">
+                                            <p style="margin: 0; color: #6c757d; font-size: 15px;">No job matches today. Check back tomorrow for new opportunities!</p>
+                                        </div>
                                     </td>
                                 </tr>
-                                {jobs_html}
                             </table>
-                            '''}
                             
                             <!-- Hackathons Section -->
-                            {"" if not hackathons_html else f'''
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 16px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 32px;">
                                 <tr>
-                                    <td style="padding: 0 0 16px 0;">
-                                        <h3 style="margin: 0; color: #1a1a1a; font-size: 18px; font-weight: 700;">🏆 Featured Hackathons</h3>
+                                    <td>
+                                        <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                                            <div style="background: linear-gradient(135deg, #9B59B6, #8E44AD); width: 48px; height: 48px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; margin-right: 14px; box-shadow: 0 4px 12px rgba(155, 89, 182, 0.3);">
+                                                <span style="font-size: 24px;">🏆</span>
+                                            </div>
+                                            <h3 style="margin: 0; color: #1a1a1a; font-size: 22px; font-weight: 800; letter-spacing: -0.3px;">Featured Hackathons</h3>
+                                        </div>
+                                        
+                                        <!-- Hackathon Cards Container -->
+                                        <div style="margin-top: 16px;">
+                                            {hackathons_html}
+                                        </div>
+                                        
+                                        <!-- Empty State -->
+                                        <div style="display: {hackathons_empty_display}; text-align: center; padding: 32px; background: #f8f9fa; border-radius: 12px; border: 2px dashed #dee2e6;">
+                                            <p style="margin: 0; color: #6c757d; font-size: 15px;">No hackathons available right now. Stay tuned for exciting challenges!</p>
+                                        </div>
                                     </td>
                                 </tr>
-                                {hackathons_html}
                             </table>
-                            '''}
                             
                             <!-- News Section -->
-                            {"" if not news_html else f'''
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 16px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 32px;">
                                 <tr>
-                                    <td style="padding: 0 0 16px 0;">
-                                        <h3 style="margin: 0; color: #1a1a1a; font-size: 18px; font-weight: 700;">📰 Industry Insights</h3>
+                                    <td>
+                                        <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                                            <div style="background: linear-gradient(135deg, #E74C3C, #C0392B); width: 48px; height: 48px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; margin-right: 14px; box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);">
+                                                <span style="font-size: 24px;">📰</span>
+                                            </div>
+                                            <h3 style="margin: 0; color: #1a1a1a; font-size: 22px; font-weight: 800; letter-spacing: -0.3px;">Industry Insights</h3>
+                                        </div>
+                                        
+                                        <!-- News Cards Container -->
+                                        <div style="margin-top: 16px;">
+                                            {news_html}
+                                        </div>
+                                        
+                                        <!-- Empty State -->
+                                        <div style="display: {news_empty_display}; text-align: center; padding: 32px; background: #f8f9fa; border-radius: 12px; border: 2px dashed #dee2e6;">
+                                            <p style="margin: 0; color: #6c757d; font-size: 15px;">No news updates at the moment. We'll keep you informed!</p>
+                                        </div>
                                     </td>
                                 </tr>
-                                {news_html}
                             </table>
-                            '''}
                             
-                            <!-- CTA -->
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 24px;">
+                            <!-- Main CTA -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                 <tr>
-                                    <td style="padding: 24px 0; border-top: 1px solid #eeeeee; text-align: center;">
-                                        <a href="https://erflog.com/dashboard" style="display: inline-block; background: linear-gradient(135deg, #D95D39 0%, #c54d2d 100%); color: white; text-decoration: none; padding: 16px 36px; border-radius: 10px; font-weight: 700; font-size: 15px; letter-spacing: 0.3px;">View Full Dashboard →</a>
+                                    <td style="padding: 32px 0; border-top: 2px solid #f0f0f0; text-align: center;">
+                                        <div style="background: linear-gradient(135deg, #FFF5F0 0%, #FFE8E0 100%); border-radius: 16px; padding: 32px; margin-bottom: 20px;">
+                                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 18px; font-weight: 700; line-height: 1.5;">Ready to accelerate your career?</p>
+                                            <a href="https://erflog.vercel.app/dashboard" style="display: inline-block; background: linear-gradient(135deg, #D95D39 0%, #F18F01 100%); color: white; text-decoration: none; padding: 18px 48px; border-radius: 50px; font-weight: 800; font-size: 16px; letter-spacing: 0.5px; box-shadow: 0 6px 20px rgba(217, 93, 57, 0.4); transition: transform 0.2s;">
+                                                🚀 Explore Full Dashboard
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Stats Banner -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td>
+                                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 24px; text-align: center; margin-bottom: 24px;">
+                                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                                <tr>
+                                                    <td style="text-align: center; padding: 8px;">
+                                                        <p style="margin: 0; color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Jobs Today</p>
+                                                        <p style="margin: 4px 0 0 0; color: white; font-size: 24px; font-weight: 900;">{jobs_count}</p>
+                                                    </td>
+                                                    <td style="text-align: center; padding: 8px;">
+                                                        <p style="margin: 0; color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Hackathons</p>
+                                                        <p style="margin: 4px 0 0 0; color: white; font-size: 24px; font-weight: 900;">{hackathons_count}</p>
+                                                    </td>
+                                                    <td style="text-align: center; padding: 8px;">
+                                                        <p style="margin: 0; color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">News</p>
+                                                        <p style="margin: 4px 0 0 0; color: white; font-size: 24px; font-weight: 900;">{news_count}</p>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </div>
                                     </td>
                                 </tr>
                             </table>
@@ -278,10 +401,59 @@ def generate_email_html(user_name: str, jobs: list, hackathons: list, news: list
                     
                     <!-- Footer -->
                     <tr>
-                        <td style="background: #f9f9f9; border-radius: 0 0 20px 20px; padding: 24px; text-align: center;">
-                            <p style="margin: 0 0 8px 0; color: #888888; font-size: 13px;">Sent with ❤️ by <strong>Erflog</strong> AI Career Platform</p>
-                            <p style="margin: 0; color: #aaaaaa; font-size: 12px;">You're receiving this because you signed up for daily digests.</p>
+                        <td style="background: linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%); border-radius: 0 0 20px 20px; padding: 40px 32px; text-align: center;" class="mobile-padding">
+                            
+                            <!-- Team Info -->
+                            <div style="margin-bottom: 24px;">
+                                <div style="display: inline-block; background: white; border-radius: 16px; padding: 20px 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+                                    <p style="margin: 0 0 8px 0; color: #1a1a1a; font-size: 18px; font-weight: 800;">Team Erflog</p>
+                                    <p style="margin: 0; color: #666666; font-size: 14px; font-weight: 500;">Empowering Careers with AI</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Contact -->
+                            <div style="margin-bottom: 24px;">
+                                <p style="margin: 0 0 8px 0; color: #555555; font-size: 14px; font-weight: 600;">Have questions or feedback?</p>
+                                <a href="mailto:erflog.ai@gmail.com" style="color: #D95D39; text-decoration: none; font-size: 15px; font-weight: 700;">erflog.ai@gmail.com</a>
+                            </div>
+                            
+                            <!-- Visit Website Button -->
+                            <div style="margin-bottom: 24px;">
+                                <a href="https://erflog.vercel.app" style="display: inline-block; background: linear-gradient(135deg, #D95D39, #F18F01); color: white; text-decoration: none; padding: 14px 36px; border-radius: 50px; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; box-shadow: 0 4px 16px rgba(217, 93, 57, 0.3);">
+                                    🌐 Visit Erflog Website
+                                </a>
+                            </div>
+                            
+                            <!-- Divider -->
+                            <div style="height: 1px; background: linear-gradient(90deg, transparent, #d1d5db, transparent); margin: 24px 0;"></div>
+                            
+                            <!-- Footer Text -->
+                            <p style="margin: 0 0 8px 0; color: #888888; font-size: 13px; line-height: 1.6;">
+                                Sent with ❤️ by <strong style="color: #D95D39;">Erflog</strong> AI Career Platform
+                            </p>
+                            <p style="margin: 0 0 12px 0; color: #aaaaaa; font-size: 12px; line-height: 1.6;">
+                                You're receiving this because you signed up for daily career digests.
+                            </p>
+                            
+                            <!-- Social Links -->
+                            <div style="margin-top: 20px;">
+                                <p style="margin: 0 0 12px 0; color: #999999; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Connect With Us</p>
+                                <div style="display: inline-flex; gap: 12px;">
+                                    <a href="https://erflog.vercel.app" style="display: inline-block; width: 36px; height: 36px; background: #D95D39; border-radius: 50%; line-height: 36px; text-align: center; text-decoration: none; color: white; font-size: 16px;">🌐</a>
+                                </div>
+                            </div>
+                            
+                            <!-- Copyright -->
+                            <p style="margin: 24px 0 0 0; color: #bbbbbb; font-size: 11px;">
+                                © 2025 Erflog. All rights reserved.
+                            </p>
+                            
                         </td>
+                    </tr>
+                    
+                    <!-- Decorative Bottom Bar -->
+                    <tr>
+                        <td style="background: linear-gradient(90deg, #D95D39, #F18F01, #D95D39); height: 6px; border-radius: 0 0 20px 20px;"></td>
                     </tr>
                     
                 </table>
