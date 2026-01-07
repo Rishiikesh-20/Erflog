@@ -55,9 +55,11 @@ allowed_origins = [
     "http://localhost:8080",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:8080",
-    # Production URLs - Add your actual URLs here after deployment
+    # Production URLs
     "https://erflog.vercel.app",
     "https://www.erflog.vercel.app",
+    # API Gateway URL
+    "https://erflog-gateway-wvuqy1j.uc.gateway.dev",
     # Cloud Run URLs will be added dynamically via environment variable
 ]
 
