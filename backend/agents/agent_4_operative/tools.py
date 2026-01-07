@@ -33,8 +33,7 @@ except ImportError:
 
 # Browser Automation
 try:
-    from browser_use import Agent, Browser
-    # v0.1.1 uses direct params for Browser, not BrowserConfig
+    from browser_use import Agent, Browser, BrowserConfig
     BROWSER_USE_AVAILABLE = True
 except ImportError as e:
     BROWSER_USE_AVAILABLE = False
@@ -110,9 +109,15 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
             nest_asyncio.apply()
             asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         
-        # browser-use v0.1.10 - Simple imports
-        from browser_use import Agent
+        # browser-use v0.1.40 - Import with BrowserConfig for persistent profile
+        from browser_use import Agent, Browser, BrowserConfig
         from langchain_google_genai import ChatGoogleGenerativeAI
+        import os
+        import langchain
+        
+        # Fix langchain verbose attribute issue
+        if not hasattr(langchain, 'verbose'):
+            langchain.verbose = False
         
         # Use LangChain's Gemini wrapper 
         llm = ChatGoogleGenerativeAI(
@@ -121,7 +126,12 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
             temperature=0.1
         )
         
+        # Create persistent profile directory for saving logins
+        profile_dir = os.path.join(os.path.expanduser('~'), '.erflog_browser_profile')
+        os.makedirs(profile_dir, exist_ok=True)
+        
         print(f"🎯 [Agent 4] Initializing browser agent with LLM...")
+        print(f"📁 [Agent 4] Using persistent profile: {profile_dir}")
         
         # Clean and prepare user data
         clean_data = {k: v for k, v in user_data.items() if v}
@@ -186,6 +196,7 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
         """
         
         print(f"🎯 [Agent 4] Starting browser automation...")
+        print(f"💡 [Agent 4] Using persistent profile - your logins will be saved!")
         
         # Run Playwright in a separate thread with ProactorEventLoop for Windows subprocess support
         import concurrent.futures
@@ -203,10 +214,48 @@ async def run_auto_apply(job_url: str, user_data: dict, user_id: str = None, job
                 asyncio.set_event_loop(loop)
             
             try:
-                # Create and run agent in this thread's event loop
-                agent = Agent(task=task, llm=llm)
-                _global_browser_refs.append(agent)
-                result = loop.run_until_complete(agent.run())
+                async def run_with_persistent_browser():
+                    # Find Chrome executable path
+                    chrome_paths = [
+                        os.path.join(os.environ.get('PROGRAMFILES', 'C:\\Program Files'), 'Google\\Chrome\\Application\\chrome.exe'),
+                        os.path.join(os.environ.get('PROGRAMFILES(X86)', 'C:\\Program Files (x86)'), 'Google\\Chrome\\Application\\chrome.exe'),
+                        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Google\\Chrome\\Application\\chrome.exe'),
+                    ]
+                    
+                    chrome_path = None
+                    for path in chrome_paths:
+                        if os.path.exists(path):
+                            chrome_path = path
+                            break
+                    
+                    if chrome_path:
+                        print(f"✅ [Agent 4] Found Chrome at: {chrome_path}")
+                        # Use chrome_instance_path to connect to user's Chrome with all their logins
+                        browser_config = BrowserConfig(
+                            headless=False,
+                            disable_security=True,
+                            chrome_instance_path=chrome_path,
+                        )
+                    else:
+                        print(f"⚠️ [Agent 4] Chrome not found, using default Chromium")
+                        browser_config = BrowserConfig(
+                            headless=False,
+                            disable_security=True,
+                        )
+                    
+                    # Create browser with config
+                    browser = Browser(config=browser_config)
+                    
+                    print(f"✅ [Agent 4] Browser configured")
+                    
+                    # Create agent with custom browser
+                    agent = Agent(task=task, llm=llm, browser=browser)
+                    _global_browser_refs.append(agent)
+                    
+                    result = await agent.run()
+                    return result
+                
+                result = loop.run_until_complete(run_with_persistent_browser())
                 return result
             finally:
                 loop.close()
