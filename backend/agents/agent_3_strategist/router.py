@@ -369,3 +369,99 @@ async def run_daily_notifications(
         "emails_skipped": result.get("emails_skipped", 0),
         "timestamp": result.get("timestamp")
     }
+
+
+# ============================================================================
+# Hunter.io Recruiter Email Finder
+# ============================================================================
+
+from pydantic import BaseModel
+from typing import Optional, List
+
+class FindRecruiterRequest(BaseModel):
+    company: str
+    job_id: str
+    job_title: str
+
+
+@router.post("/find-recruiter")
+async def find_recruiter_email(
+    request: FindRecruiterRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Find recruiter/HR emails for a company using Hunter.io API.
+    Also generates a personalized outreach email template.
+    
+    Request body:
+    - company: Company name or domain
+    - job_id: ID of the job (for tracking)
+    - job_title: Title of the job (for email template)
+    
+    Returns:
+    - emails: List of found emails with name, position, confidence
+    - email_template: LLM-generated soft outreach email
+    """
+    from .hunter_service import get_hunter_service
+    from supabase import create_client
+    import os
+    
+    user_id = user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found")
+    
+    hunter_service = get_hunter_service()
+    
+    # Find recruiter emails
+    result = await hunter_service.find_recruiter_emails(
+        company=request.company,
+        limit=5
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400, 
+            detail=result.get("error", "Failed to find recruiter emails")
+        )
+    
+    # Get user profile for email template
+    try:
+        SUPABASE_URL = os.getenv("SUPABASE_URL")
+        SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        
+        profile_response = supabase.table("profiles").select(
+            "name, skills"
+        ).eq("user_id", user_id).single().execute()
+        
+        user_name = profile_response.data.get("name", "Job Seeker") if profile_response.data else "Job Seeker"
+        user_skills = profile_response.data.get("skills", []) if profile_response.data else []
+    except Exception as e:
+        user_name = "Job Seeker"
+        user_skills = []
+    
+    # Get first recruiter name for personalized email
+    recruiter_name = None
+    emails = result.get("emails", [])
+    if emails:
+        recruiter_name = emails[0].get("full_name")
+    
+    # Generate outreach email template
+    email_template = await hunter_service.generate_outreach_email(
+        user_name=user_name,
+        user_skills=user_skills,
+        job_title=request.job_title,
+        company=request.company,
+        recruiter_name=recruiter_name
+    )
+    
+    return {
+        "success": True,
+        "company": request.company,
+        "domain": result.get("domain"),
+        "emails": emails,
+        "total_found": result.get("total_found", 0),
+        "recruiter_count": result.get("recruiter_count", 0),
+        "email_template": email_template
+    }
+

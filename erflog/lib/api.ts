@@ -1336,5 +1336,52 @@ export async function completeRoadmap(userId: string, savedJobId: string): Promi
   }
 }
 
+// =============================================================================
+// Hunter.io Recruiter Email Finder
+// =============================================================================
+
+export interface RecruiterEmail {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string;
+  position: string | null;
+  department: string | null;
+  confidence: number;
+  is_recruiter: boolean;
+}
+
+export interface FindRecruiterEmailResponse {
+  success: boolean;
+  company: string;
+  domain: string;
+  emails: RecruiterEmail[];
+  total_found: number;
+  recruiter_count: number;
+  email_template: string;
+}
+
+/**
+ * Find recruiter/HR emails for a company using Hunter.io API.
+ * Also generates a personalized outreach email template.
+ * 
+ * @param company - Company name or domain
+ * @param jobId - ID of the job (for tracking)
+ * @param jobTitle - Title of the job (for email template)
+ */
+export async function findRecruiterEmail(
+  company: string,
+  jobId: string,
+  jobTitle: string
+): Promise<FindRecruiterEmailResponse> {
+  const response = await api.post<FindRecruiterEmailResponse>('/api/strategist/find-recruiter', {
+    company,
+    job_id: jobId,
+    job_title: jobTitle
+  });
+  return response.data;
+}
+
 export default api;
+
 

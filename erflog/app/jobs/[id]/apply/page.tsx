@@ -3,7 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useSession } from "@/lib/SessionContext";
-import { getTodayJobs, generateTailoredResume, autoApplyToJob, getSettingsProfile, TodayDataItem } from "@/lib/api";
+import { getTodayJobs, generateTailoredResume, autoApplyToJob, getSettingsProfile, findRecruiterEmail, TodayDataItem, RecruiterEmail } from "@/lib/api";
 import {
   Loader2,
   Download,
@@ -17,6 +17,8 @@ import {
   Bot,
   CheckCircle,
   XCircle,
+  Mail,
+  User,
 } from "lucide-react";
 
 export default function ApplyPage() {
@@ -54,6 +56,12 @@ export default function ApplyPage() {
     coverLetterBody: "",
     coverLetterClosing: "",
   });
+
+  // State for recruiter email finder
+  const [isFindingRecruiter, setIsFindingRecruiter] = useState(false);
+  const [recruiterEmails, setRecruiterEmails] = useState<RecruiterEmail[]>([]);
+  const [emailTemplate, setEmailTemplate] = useState<string | null>(null);
+  const [recruiterError, setRecruiterError] = useState<string | null>(null);
 
   // Fetch job data with pre-generated application text and resume
   useEffect(() => {
@@ -196,6 +204,38 @@ Location: ${job.location || ""}
       });
     } finally {
       setIsAutoApplying(false);
+    }
+  };
+
+  // Handler for finding recruiter emails
+  const handleFindRecruiter = async () => {
+    if (!job) return;
+
+    setIsFindingRecruiter(true);
+    setRecruiterError(null);
+    setRecruiterEmails([]);
+    setEmailTemplate(null);
+
+    try {
+      const result = await findRecruiterEmail(
+        job.company,
+        jobId,
+        job.title
+      );
+
+      if (result.success) {
+        setRecruiterEmails(result.emails);
+        setEmailTemplate(result.email_template);
+      } else {
+        setRecruiterError("No recruiter emails found for this company.");
+      }
+    } catch (err: any) {
+      console.error("Find recruiter error:", err);
+      setRecruiterError(
+        err?.response?.data?.detail || "Failed to find recruiter emails. Please try again."
+      );
+    } finally {
+      setIsFindingRecruiter(false);
     }
   };
 
@@ -502,6 +542,173 @@ Location: ${job.location || ""}
             </div>
           </div>
         )}
+
+        {/* ==================== FIND RECRUITER EMAIL SECTION ==================== */}
+        <div
+          className="bg-surface rounded-xl border p-8 mb-8"
+          style={{ borderColor: "#E5E0D8" }}
+        >
+          <div className="flex items-start gap-6">
+            <div
+              className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: recruiterEmails.length > 0
+                  ? "#22c55e"
+                  : isFindingRecruiter
+                  ? "#3b82f6"
+                  : "#ec4899",
+              }}
+            >
+              {isFindingRecruiter ? (
+                <Loader2 className="w-8 h-8 text-white animate-spin" />
+              ) : (
+                <Mail className="w-8 h-8 text-white" />
+              )}
+            </div>
+            <div className="flex-1">
+              <h2 className="font-serif-bold text-2xl text-ink mb-2">
+                Find Recruiter Email
+              </h2>
+              <p className="text-secondary mb-4">
+                Find HR and recruiter emails at {job?.company || "this company"} using Hunter.io.
+                We&apos;ll also generate a personalized outreach email template for you.
+              </p>
+
+              {/* Error Message */}
+              {recruiterError && (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+                  <p className="text-sm text-red-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {recruiterError}
+                  </p>
+                </div>
+              )}
+
+              {/* Find Recruiter Button */}
+              {recruiterEmails.length === 0 && !emailTemplate && (
+                <button
+                  onClick={handleFindRecruiter}
+                  disabled={isFindingRecruiter}
+                  className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: "#ec4899" }}
+                >
+                  {isFindingRecruiter ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Finding Recruiters...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-5 h-5" />
+                      Find Recruiter Emails
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Recruiter Emails Results */}
+              {recruiterEmails.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="font-medium text-ink">Found {recruiterEmails.length} contact{recruiterEmails.length !== 1 ? 's' : ''}:</h3>
+                  <div className="space-y-3">
+                    {recruiterEmails.map((recruiter, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-4 rounded-lg border bg-white"
+                        style={{ borderColor: "#E5E0D8" }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center">
+                            <User className="w-5 h-5 text-pink-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-ink">
+                              {recruiter.full_name || "Unknown"}
+                              {recruiter.is_recruiter && (
+                                <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                                  Recruiter
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-sm text-secondary">
+                              {recruiter.position || "Employee"} • {recruiter.email}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleCopy(`email-${idx}`, recruiter.email)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
+                        >
+                          {copied === `email-${idx}` ? (
+                            <>
+                              <Check className="w-4 h-4 text-green-600" />
+                              <span className="text-green-600">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              Copy Email
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                </div>
+                </div>
+              )}
+
+              {/* Email Template - Shows even if no emails found */}
+              {emailTemplate && (
+                <div className="mt-6">
+                  {recruiterEmails.length === 0 && (
+                    <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                      <p className="text-sm text-amber-700">
+                        ⚠️ No recruiter emails found in Hunter.io&apos;s database for this company. 
+                        But here&apos;s a ready-to-use outreach template!
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium text-ink">Outreach Email Template</h3>
+                    <button
+                      onClick={() => handleCopy("email-template", emailTemplate)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-pink-100 hover:bg-pink-200 transition-colors text-pink-700"
+                    >
+                      {copied === "email-template" ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          Copy Template
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div
+                    className="p-4 rounded-lg border bg-gradient-to-br from-pink-50 to-white whitespace-pre-wrap text-sm text-ink font-mono"
+                    style={{ borderColor: "#E5E0D8" }}
+                  >
+                    {emailTemplate}
+                  </div>
+
+                  {/* Try Again Button */}
+                  <button
+                    onClick={handleFindRecruiter}
+                    disabled={isFindingRecruiter}
+                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all hover:bg-gray-50 text-secondary"
+                    style={{ borderColor: "#E5E0D8" }}
+                  >
+                    <Mail className="w-4 h-4" />
+                    Search Again
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Application Responses Section */}
         <div
