@@ -67,14 +67,6 @@
   <a href="#team">Team</a>
 </p>
 
-<br />
-
-## Demo
-
-https://github.com/user-attachments/assets/dbc98028-ed5b-4321-b2d3-73bb54646128
-
-<br />
-
 ## 📋 About The Project
 
 **ERFOLG** (German for "success") is a sophisticated **Multi-Agent AI System** that operates as your **24/7 Autonomous Career Manager**. Unlike traditional job boards that require constant manual effort, ERFOLG actively works in the background to bridge the gap between where you are and where you want to be in your career.
