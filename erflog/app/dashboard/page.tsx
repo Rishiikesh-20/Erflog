@@ -265,18 +265,18 @@ export default function Dashboard() {
   // Mock function for runStrategy (Replace with actual API call)
   const runStrategy = useCallback(async (query?: string, force?: boolean) => {
     try {
-        // Simulating API latency
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // This should be your actual API call:
-        // const res = await api.getStrategyJobs(query);
-        // return res.data;
-        
-        // Return true to simulate success
-        return true; 
+      // Simulating API latency
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // This should be your actual API call:
+      // const res = await api.getStrategyJobs(query);
+      // return res.data;
+
+      // Return true to simulate success
+      return true;
     } catch (e) {
-        console.error("Strategy run failed", e);
-        return false;
+      console.error("Strategy run failed", e);
+      return false;
     }
   }, []);
 
@@ -285,8 +285,8 @@ export default function Dashboard() {
       const score = Math.round(job.score * 100);
       const missingSkills = job.roadmap_details?.missing_skills || [];
       const commonSkills = ["Python", "JavaScript", "TypeScript", "React", "Node.js", "AWS", "Docker", "Kubernetes"];
-      const skills = commonSkills.filter(skill => 
-        job.description?.toLowerCase().includes(skill.toLowerCase()) || 
+      const skills = commonSkills.filter(skill =>
+        job.description?.toLowerCase().includes(skill.toLowerCase()) ||
         job.title.toLowerCase().includes(skill.toLowerCase())
       ).slice(0, 4);
 
@@ -318,24 +318,24 @@ export default function Dashboard() {
 
         // Fetch basic dashboard insights
         const data = await api.getDashboardInsights();
-        
+
         // Check if user just completed onboarding but cold start hasn't finished
         // (no jobs means today_data is empty)
         const hasJobs = data.top_jobs && data.top_jobs.length > 0;
         const isNewUser = data.profile_strength > 0;
-        
+
         if (!hasJobs && isNewUser) {
           console.log("[Dashboard] New user detected, running cold start with polling...");
           setIsColdStarting(true);
           setProfile({ name: data.user_name || "User" });
-          
+
           // Trigger cold start (don't wait for it - it runs in background)
           api.triggerColdStart().then(() => {
             console.log("[Dashboard] Cold start API call completed");
           }).catch(err => {
             console.error("[Dashboard] Cold start API error:", err);
           });
-          
+
           // Start animation loop
           let animationStep = 0;
           const animationInterval = setInterval(() => {
@@ -348,31 +348,31 @@ export default function Dashboard() {
           const timerInterval = setInterval(() => {
             setColdStartElapsed(Math.floor((Date.now() - startTime) / 1000));
           }, 1000);
-          
+
           // Poll for data until jobs are available
           const maxPollingTime = 120000; // 2 minutes max
           const pollInterval = 10000; // Poll every 10 seconds
-          
+
           const pollForData = async (): Promise<boolean> => {
             while (Date.now() - startTime < maxPollingTime) {
               try {
                 console.log("[Dashboard] Polling for data...");
                 const pollData = await api.getDashboardInsights();
-                
+
                 if (pollData.top_jobs && pollData.top_jobs.length > 0) {
                   console.log("[Dashboard] Jobs found! Cold start complete. Refreshing...");
                   clearInterval(animationInterval);
                   clearInterval(timerInterval);
-                  
+
                   // Show final step
                   setColdStartStep(coldStartMessages.length - 1);
                   await new Promise(resolve => setTimeout(resolve, 1500));
-                  
+
                   // Force reload to ensure fresh state
                   window.location.reload();
                   return true;
                 }
-                
+
                 // Wait before next poll
                 await new Promise(resolve => setTimeout(resolve, pollInterval));
               } catch (pollErr) {
@@ -382,9 +382,9 @@ export default function Dashboard() {
             }
             return false;
           };
-          
+
           const success = await pollForData();
-          
+
           if (!success) {
             console.log("[Dashboard] Polling timeout - showing dashboard anyway");
             clearInterval(animationInterval);
@@ -398,7 +398,7 @@ export default function Dashboard() {
           setInsights(data);
           setProfile({ name: data.user_name || "User" });
         }
-        
+
         const newSessionId = "session-" + Date.now();
         setSessionId(newSessionId);
 
@@ -480,7 +480,7 @@ export default function Dashboard() {
       setCurrentStep((prev) => {
         const nextStep = prev + 1;
         const stepIndex = nextStep >= SIMULATION_STEPS.length ? SIMULATION_STEPS.length - 4 + (nextStep % 4) : nextStep;
-        
+
         if (stepIndex < SIMULATION_STEPS.length) {
           const step = SIMULATION_STEPS[stepIndex];
           setAgentLogs((logs) => [...logs, {
@@ -517,13 +517,13 @@ export default function Dashboard() {
   // 4. GitHub Sync Handler (Single button click - no auto-polling)
   const handleGitHubSync = useCallback(async () => {
     if (!sessionId || isSyncing) return;
-    
+
     setIsSyncing(true);
     setSyncResult(null);
-    
+
     try {
       const result = await checkWatchdog(sessionId);
-      
+
       if (result.status === "updated") {
         setSyncResult({
           insights: result.insights,
@@ -531,7 +531,7 @@ export default function Dashboard() {
           updatedSkills: result.updated_skills || [],
           fromCache: result.from_cache || false,
         });
-        
+
         // Show success log with cache indicator
         const cacheIndicator = result.from_cache ? " (from cache)" : " (fresh analysis)";
         setAgentLogs(prev => [...prev, {
@@ -582,13 +582,13 @@ export default function Dashboard() {
   }, [isAuthenticated, user?.id]);
 
   // Save Job Handler
-  const handleSaveJob = useCallback(async (job: { 
-    id: string; 
-    title: string; 
-    company: string; 
-    description?: string; 
-    link?: string; 
-    score: number; 
+  const handleSaveJob = useCallback(async (job: {
+    id: string;
+    title: string;
+    company: string;
+    description?: string;
+    link?: string;
+    score: number;
     roadmap_details?: RoadmapDetails | null;
     full_job_data?: object;
   }) => {
@@ -675,7 +675,7 @@ export default function Dashboard() {
         }
       }
     };
-    
+
     if (isAuthenticated && !authLoading) {
       fetchFullJobs();
     }
@@ -742,7 +742,7 @@ export default function Dashboard() {
   if (isColdStarting) {
     const currentMessage = coldStartMessages[coldStartStep];
     const progress = ((coldStartStep + 1) / coldStartMessages.length) * 100;
-    
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center overflow-hidden relative">
         {/* Animated background particles */}
@@ -751,25 +751,25 @@ export default function Dashboard() {
             <motion.div
               key={i}
               className="absolute w-2 h-2 bg-[#D95D39] rounded-full opacity-20"
-              initial={{ 
-                x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920), 
-                y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080) 
+              initial={{
+                x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
+                y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080)
               }}
-              animate={{ 
+              animate={{
                 y: [-20, 20, -20],
                 opacity: [0.1, 0.3, 0.1],
               }}
-              transition={{ 
-                duration: 3 + Math.random() * 2, 
-                repeat: Infinity, 
-                delay: Math.random() * 2 
+              transition={{
+                duration: 3 + Math.random() * 2,
+                repeat: Infinity,
+                delay: Math.random() * 2
               }}
             />
           ))}
         </div>
 
         {/* Glowing orb in background */}
-        <motion.div 
+        <motion.div
           className="absolute w-[600px] h-[600px] bg-[#D95D39] rounded-full opacity-5 blur-3xl"
           animate={{ scale: [1, 1.2, 1], opacity: [0.03, 0.08, 0.03] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
@@ -783,7 +783,7 @@ export default function Dashboard() {
             transition={{ type: "spring", duration: 0.8 }}
             className="mb-8"
           >
-            <motion.div 
+            <motion.div
               className="w-24 h-24 bg-gradient-to-br from-[#D95D39] to-[#ff7654] rounded-3xl flex items-center justify-center mx-auto shadow-2xl shadow-[#D95D39]/30"
               animate={{ rotate: 360 }}
               transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
@@ -807,7 +807,7 @@ export default function Dashboard() {
           </motion.div>
 
           {/* Agent Animation Card */}
-          <motion.div 
+          <motion.div
             className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8 mb-8"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -833,7 +833,7 @@ export default function Dashboard() {
                     {currentMessage?.message}
                   </div>
                 </div>
-                <motion.div 
+                <motion.div
                   className="w-3 h-3 bg-[#D95D39] rounded-full"
                   animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
                   transition={{ duration: 1, repeat: Infinity }}
@@ -845,7 +845,7 @@ export default function Dashboard() {
           {/* Progress Bar & Timer */}
           <div className="w-full max-w-md mx-auto">
             <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
-              <motion.div 
+              <motion.div
                 className="h-full bg-gradient-to-r from-[#D95D39] to-[#ff7654] rounded-full"
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
@@ -856,10 +856,10 @@ export default function Dashboard() {
               <span>Initializing... {coldStartElapsed > 0 && `(${coldStartElapsed}s)`}</span>
               <span>{Math.round(progress)}%</span>
             </div>
-            
+
             {/* Reassurance Message if taking long */}
             {coldStartElapsed > 30 && (
-              <motion.p 
+              <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="text-xs text-orange-400 mt-2"
@@ -870,7 +870,7 @@ export default function Dashboard() {
           </div>
 
           {/* Fun fact/tip */}
-          <motion.p 
+          <motion.p
             className="text-gray-500 text-sm mt-8 italic"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -902,8 +902,8 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-             <button onClick={() => router.push("/settings")} className="p-2 text-gray-600 hover:text-gray-900"><Settings className="w-5 h-5" /></button>
-             <button onClick={() => signOut()} className="p-2 text-red-600 hover:bg-red-50 rounded"><LogOut className="w-5 h-5" /></button>
+            <button onClick={() => router.push("/settings")} className="p-2 text-gray-600 hover:text-gray-900"><Settings className="w-5 h-5" /></button>
+            <button onClick={() => signOut()} className="p-2 text-red-600 hover:bg-red-50 rounded"><LogOut className="w-5 h-5" /></button>
           </div>
         </div>
       </header>
@@ -935,67 +935,64 @@ export default function Dashboard() {
 
       {/* ==================== 3. Main Content ==================== */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        
+
         {/* Welcome Section */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex justify-between items-end">
           <div>
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {insights?.user_name?.split(" ")[0] || "there"}! 👋</h2>
             <p className="text-gray-600">Your AI career assistant is working 24/7 to find opportunities for you.</p>
           </div>
-          
+
           {/* Controls */}
           <div className="flex items-center gap-3">
-              <button
-                onClick={handleGitHubSync}
-                disabled={isSyncing}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm border transition-all ${
-                  isSyncing 
-                    ? "bg-gray-100 border-gray-300 text-gray-500" 
-                    : "bg-white hover:bg-gray-50 border-gray-200 hover:border-gray-300"
+            <button
+              onClick={handleGitHubSync}
+              disabled={isSyncing}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm border transition-all ${isSyncing
+                  ? "bg-gray-100 border-gray-300 text-gray-500"
+                  : "bg-white hover:bg-gray-50 border-gray-200 hover:border-gray-300"
                 }`}
-              >
-                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Github className="w-4 h-4" />}
-                {isSyncing ? "Syncing..." : "Sync GitHub"}
-              </button>
+            >
+              {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Github className="w-4 h-4" />}
+              {isSyncing ? "Syncing..." : "Sync GitHub"}
+            </button>
 
-              <button onClick={handleRefresh} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm border bg-white border-gray-200 hover:bg-gray-50">
-                <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} /> Refresh
-              </button>
+            <button onClick={handleRefresh} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm border bg-white border-gray-200 hover:bg-gray-50">
+              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} /> Refresh
+            </button>
           </div>
         </motion.div>
 
         {/* GitHub Sync Result Card */}
         <AnimatePresence>
           {syncResult && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10, scale: 0.98 }} 
-              animate={{ opacity: 1, y: 0, scale: 1 }} 
+            <motion.div
+              initial={{ opacity: 0, y: -10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.98 }}
               transition={{ type: "spring", duration: 0.5 }}
               className="mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-slate-700/50"
             >
               <div className="flex items-start gap-4">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${
-                  syncResult.fromCache 
-                    ? "bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30" 
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${syncResult.fromCache
+                    ? "bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30"
                     : "bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/30"
-                }`}>
+                  }`}>
                   <Github className={`w-7 h-7 ${syncResult.fromCache ? "text-amber-400" : "text-green-400"}`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="font-bold text-xl">GitHub Sync Complete</h3>
                     {/* Cache indicator badge */}
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                      syncResult.fromCache 
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" 
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${syncResult.fromCache
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                         : "bg-green-500/20 text-green-300 border border-green-500/30"
-                    }`}>
+                      }`}>
                       {syncResult.fromCache ? "⚡ Cached" : "✨ Fresh Analysis"}
                     </span>
                   </div>
                   <p className="text-slate-300 text-sm mb-4">{syncResult.insights?.message}</p>
-                  
+
                   {/* Skills Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* Skills (New or Detected based on cache) */}
@@ -1009,18 +1006,17 @@ export default function Dashboard() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {syncResult.newSkills.slice(0, 5).map((skill, idx) => (
-                            <span key={idx} className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
-                              syncResult.fromCache 
-                                ? "bg-amber-500/10 text-amber-300 border-amber-500/20" 
+                            <span key={idx} className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${syncResult.fromCache
+                                ? "bg-amber-500/10 text-amber-300 border-amber-500/20"
                                 : "bg-green-500/10 text-green-300 border-green-500/20"
-                            }`}>
+                              }`}>
                               {skill}
                             </span>
                           ))}
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Tech Stack */}
                     {syncResult.insights?.tech_stack && syncResult.insights.tech_stack.length > 0 && (
                       <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
@@ -1037,7 +1033,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Active Repos */}
                     {syncResult.insights?.repos_active && syncResult.insights.repos_active.length > 0 && (
                       <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
@@ -1056,9 +1052,9 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Close button */}
-                <button 
+                <button
                   onClick={() => setSyncResult(null)}
                   className="text-slate-500 hover:text-white transition-colors p-1 hover:bg-slate-700/50 rounded-lg"
                 >
@@ -1078,29 +1074,29 @@ export default function Dashboard() {
 
         {/* Strategy / Job Board */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           {/* Left: Job Matches (Wide) */}
           <div className="lg:col-span-2 space-y-6">
-             <div className="flex gap-4 mb-4">
-                 <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
-                    <CheckCircle2 className="text-green-500" />
-                    <div><div className="font-bold text-xl">{readyJobs}</div><div className="text-xs text-gray-500">Ready</div></div>
-                 </div>
-                 <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
-                    <Target className="text-amber-500" />
-                    <div><div className="font-bold text-xl">{gapJobs}</div><div className="text-xs text-gray-500">Gaps</div></div>
-                 </div>
-                 <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
-                    <TrendingUp className="text-[#D95D39]" />
-                    <div><div className="font-bold text-xl">{avgMatch}%</div><div className="text-xs text-gray-500">Match</div></div>
-                 </div>
-             </div>
+            <div className="flex gap-4 mb-4">
+              <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+                <CheckCircle2 className="text-green-500" />
+                <div><div className="font-bold text-xl">{readyJobs}</div><div className="text-xs text-gray-500">Ready</div></div>
+              </div>
+              <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+                <Target className="text-amber-500" />
+                <div><div className="font-bold text-xl">{gapJobs}</div><div className="text-xs text-gray-500">Gaps</div></div>
+              </div>
+              <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+                <TrendingUp className="text-[#D95D39]" />
+                <div><div className="font-bold text-xl">{avgMatch}%</div><div className="text-xs text-gray-500">Match</div></div>
+              </div>
+            </div>
 
-             <div className="space-y-4">
+            <div className="space-y-4">
               <h3 className="text-lg font-bold text-gray-900 mb-3 ml-1">Top 3 Recommended Jobs for you</h3>
               {jobs.length > 0 ? (
                 jobs.slice(0, 3).map((job) => (
-                  <JobCard 
+                  <JobCard
                     key={job.id}
                     id={job.id}
                     companyName={job.company}
@@ -1131,7 +1127,7 @@ export default function Dashboard() {
                   <p className="text-gray-500">No job matches found yet.</p>
                 </div>
               )}
-              
+
               {/* View All Jobs Button */}
               {jobs.length > 3 && (
                 <button
@@ -1142,7 +1138,7 @@ export default function Dashboard() {
                   <ArrowRight className="w-4 h-4" />
                 </button>
               )}
-             </div>
+            </div>
           </div>
 
           {/* Right: Insights & News */}
@@ -1181,7 +1177,7 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-            
+
           </div>
         </div>
       </main>

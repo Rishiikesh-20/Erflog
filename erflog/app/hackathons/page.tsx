@@ -147,7 +147,7 @@ export default function HackathonsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
                 className="bg-white rounded-2xl border overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] group"
-                style={{ 
+                style={{
                   borderColor: "#E5E0D8",
                   background: "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(249,247,243,0.95) 100%)"
                 }}
@@ -159,7 +159,7 @@ export default function HackathonsPage() {
                       {/* Trophy Icon */}
                       <div
                         className="h-14 w-14 rounded-xl flex-shrink-0 flex items-center justify-center shadow-lg"
-                        style={{ 
+                        style={{
                           background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)"
                         }}
                       >
@@ -176,12 +176,12 @@ export default function HackathonsPage() {
                     <div className="flex-shrink-0">
                       <div
                         className="px-4 py-2 rounded-xl text-center shadow-md"
-                        style={{ 
-                          background: Math.round(hackathon.score * 100) >= 80 
+                        style={{
+                          background: Math.round(hackathon.score * 100) >= 80
                             ? "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
                             : Math.round(hackathon.score * 100) >= 60
-                            ? "linear-gradient(135deg, #D95D39 0%, #c54d2d 100%)"
-                            : "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                              ? "linear-gradient(135deg, #D95D39 0%, #c54d2d 100%)"
+                              : "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
                         }}
                       >
                         <div className="text-2xl font-bold text-white">
