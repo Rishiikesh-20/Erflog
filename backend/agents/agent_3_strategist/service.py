@@ -45,120 +45,145 @@ NAMESPACE_NEWS = "news"
 # =========================================================================
 # RECENCY BOOSTING CONFIGURATION
 # =========================================================================
-OVERSAMPLE_FACTOR = 5  # Query 5x more results for reranking
-SEMANTIC_WEIGHT = 0.6  # 60% weight for semantic similarity
-RECENCY_WEIGHT = 0.4   # 40% weight for recency
+OVERSAMPLE_FACTOR = 5    # Query 5x more results to find matches above threshold
+SEMANTIC_WEIGHT = 0.90   # Dominant weight (90%) for semantic similarity
+RECENCY_WEIGHT = 0.10    # Tie-breaker weight (10%) for recency
 RECENCY_DECAY_LAMBDA = 0.03  # Exponential decay rate (90 day half-life)
+
+# =========================================================================
+# SCORE NORMALIZATION — Absolute Thresholding (No Curve)
+# We now use the raw cosine similarity as the match percentage.
+# - 1.00 = Perfect Match
+# - 0.75 = Strong Match
+# - < 0.65 = Irrelevant (filtered out)
+# =========================================================================
+MIN_SEMANTIC_THRESHOLD = 0.0  # Disabled: letting all matches through while debugging low raw scores
 
 
 class StrategistService:
     """
     Daily Personalized Data Matching Service.
-    
+
     Matches each user's profile vector against:
     - Jobs (top 10) from default namespace
     - Hackathons (top 10) from hackathon namespace
     - News (top 5) from news namespace
-    
+
     Results are stored in today_data table, replacing previous day's data.
     """
-    
+
     def __init__(self):
         """Initialize service with database and vector connections."""
         if not SUPABASE_URL or not SUPABASE_KEY:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-        
+
         self.supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         self.pinecone_index = None
         self.user_index = None
         self.gemini_client = None
         self._init_clients()
-    
+
     def _init_clients(self):
         """Initialize Pinecone and Gemini clients."""
         if not PINECONE_API_KEY:
             logger.warning("PINECONE_API_KEY not set, vector search disabled")
             return
-        
+
         try:
             pc = Pinecone(api_key=PINECONE_API_KEY)
             self.pinecone_index = pc.Index(INDEX_NAME)
-            
+
             # User vectors index (for getting user embeddings)
             if USER_INDEX_NAME in pc.list_indexes().names():
                 self.user_index = pc.Index(USER_INDEX_NAME)
-            
+
             logger.info(f"✅ Pinecone connected: {INDEX_NAME}")
         except Exception as e:
             logger.error(f"❌ Pinecone connection failed: {e}")
-        
+
         if GEMINI_API_KEY:
             try:
                 self.gemini_client = genai.Client(api_key=GEMINI_API_KEY)
                 logger.info("✅ Gemini client initialized")
             except Exception as e:
                 logger.error(f"❌ Gemini connection failed: {e}")
-    
+
     def _get_user_embedding(self, user_id: str) -> Optional[list[float]]:
         """
-        Get user's profile embedding from Pinecone user index.
-        Falls back to generating embedding from profile text if not found.
+        Get user's profile embedding from Pinecone.
+
+        Lookup order:
+        1. Main index 'users' namespace (where Agent 1/Perception stores them)
+        2. Separate user index (legacy, if configured)
+        3. Generate on-the-fly from profile text via Gemini
         """
-        # Try to get from user index first
+        # 1. Try main index, "users" namespace (Agent 1 stores here)
+        if self.pinecone_index:
+            try:
+                result = self.pinecone_index.fetch(ids=[user_id], namespace="users")
+                if result.vectors and user_id in result.vectors:
+                    logger.info(f"✅ Found user embedding in ai-verse/users namespace")
+                    return result.vectors[user_id].values
+            except Exception as e:
+                logger.warning(f"Failed to fetch from users namespace: {e}")
+
+        # 2. Try separate user index (if configured)
         if self.user_index:
             try:
                 result = self.user_index.fetch(ids=[user_id])
                 if result.vectors and user_id in result.vectors:
+                    logger.info(f"✅ Found user embedding in separate user index")
                     return result.vectors[user_id].values
             except Exception as e:
-                logger.warning(f"Failed to fetch user vector: {e}")
-        
-        # Fallback: Generate from profile data
+                logger.warning(f"Failed to fetch from user index: {e}")
+
+        # 3. Fallback: Generate from profile data
         try:
             profile = self.supabase.table("profiles").select(
                 "skills, target_roles, experience_summary, education"
             ).eq("user_id", user_id).single().execute()
-            
+
             if not profile.data:
                 return None
-            
+
             # Build profile text
             skills = profile.data.get("skills", []) or []
             roles = profile.data.get("target_roles", []) or []
             experience = profile.data.get("experience_summary", "") or ""
             education = profile.data.get("education", "") or ""
-            
+
             profile_text = f"""
             Skills: {', '.join(skills) if isinstance(skills, list) else skills}
             Target Roles: {', '.join(roles) if isinstance(roles, list) else roles}
             Experience: {experience}
             Education: {education}
             """.strip()
-            
+
             if not profile_text or len(profile_text) < 10:
                 return None
-            
-            # Generate embedding
+
+            # Generate embedding using Gemini (gemini-embedding-001 is the only model available)
             if self.gemini_client:
                 response = self.gemini_client.models.embed_content(
-                    model="text-embedding-004",
+                    model="gemini-embedding-001",
                     contents=profile_text,
                 )
+                logger.info(f"Generated fallback embedding for user {user_id}")
                 return response.embeddings[0].values
-            
+
         except Exception as e:
             logger.error(f"Failed to get/generate user embedding: {e}")
-        
+
         return None
-    
+
     @staticmethod
     def calculate_recency_score(posted_at: Optional[date]) -> float:
         """
         Calculate recency score using exponential decay.
-        
+
         Args:
             posted_at: Date when the job/hackathon/news was posted
-            
+
         Returns:
             Float between 0.0 and 1.0:
             - 1.0 = posted today
@@ -170,43 +195,43 @@ class StrategistService:
         if not posted_at:
             # No date available - assume very old
             return 0.1
-        
+
         try:
             # Handle both date and datetime objects
             if isinstance(posted_at, datetime):
                 posted_at = posted_at.date()
-            
+
             today = datetime.now(timezone.utc).date()
             days_old = (today - posted_at).days
-            
+
             # Exponential decay: score = e^(-lambda * days)
             recency_score = math.exp(-RECENCY_DECAY_LAMBDA * days_old)
-            
+
             # Clamp between 0 and 1
             return max(0.0, min(1.0, recency_score))
-            
+
         except Exception as e:
             logger.warning(f"Error calculating recency score: {e}")
             return 0.1
-    
+
     def _fetch_timestamps_batch(
-        self, 
-        supabase_ids: List[int], 
+        self,
+        supabase_ids: List[int],
         namespace: str
     ) -> Dict[str, Optional[date]]:
         """
         Fetch posted_at/created_at timestamps in batch from Supabase.
-        
+
         Args:
             supabase_ids: List of Supabase record IDs
             namespace: Pinecone namespace (maps to table name)
-            
+
         Returns:
             Dict mapping pinecone_id (str) -> posted_at (date)
         """
         if not supabase_ids:
             return {}
-        
+
         # Map namespace to table name
         table_map = {
             NAMESPACE_JOBS: "jobs",
@@ -214,24 +239,24 @@ class StrategistService:
             NAMESPACE_NEWS: "market_news"
         }
         table_name = table_map.get(namespace, "jobs")
-        
+
         # Determine which date column to use
         date_column = "posted_at" if table_name in ["jobs", "hackathons"] else "published_at"
-        
+
         try:
             # Batch fetch timestamps
             response = self.supabase.table(table_name).select(
                 f"id, {date_column}, created_at"
             ).in_("id", supabase_ids).execute()
-            
+
             # Build lookup dict
             timestamps = {}
             for record in response.data:
                 record_id = str(record.get("id"))
-                
+
                 # Prefer posted_at/published_at, fallback to created_at
                 date_value = record.get(date_column) or record.get("created_at")
-                
+
                 if date_value:
                     # Parse string to date if needed
                     if isinstance(date_value, str):
@@ -241,36 +266,37 @@ class StrategistService:
                             date_value = None
                     elif isinstance(date_value, datetime):
                         date_value = date_value.date()
-                
+
                 timestamps[record_id] = date_value
-            
+
             logger.debug(f"Fetched {len(timestamps)} timestamps from {table_name}")
             return timestamps
-            
+
         except Exception as e:
             logger.warning(f"Failed to fetch timestamps from {table_name}: {e}")
             return {}
-    
+
     def _query_namespace(
-        self, 
-        user_vector: list[float], 
-        namespace: str, 
+        self,
+        user_vector: list[float],
+        namespace: str,
         top_k: int
     ) -> list[dict[str, Any]]:
         """
-        Query a Pinecone namespace with user's vector using hybrid scoring.
-        
-        RECENCY BOOSTING STRATEGY:
+        Query a Pinecone namespace with user's vector using absolute scoring.
+
+        STRATEGY:
         1. Oversample from Pinecone (5x more results)
-        2. Fetch timestamps from PostgreSQL in batch
-        3. Calculate hybrid score: (semantic × 0.6) + (recency × 0.4)
-        4. Re-rank and return top_k results
-        
+        2. HARD FILTER: Discard any match with score < MIN_SEMANTIC_THRESHOLD
+        3. Fetch timestamps for survivors
+        4. Calculate hybrid score: (semantic × 0.9) + (recency × 0.1)
+        5. Return top_k survivors
+
         Returns list of matches with metadata sorted by hybrid score.
         """
         if not self.pinecone_index:
             return []
-        
+
         try:
             # Step 1: Oversample from Pinecone
             oversample_k = top_k * OVERSAMPLE_FACTOR
@@ -280,46 +306,64 @@ class StrategistService:
                 include_metadata=True,
                 namespace=namespace
             )
-            
+
             raw_matches = results.get("matches", [])
             if not raw_matches:
                 return []
-            
-            # Step 2: Extract supabase_ids for batch timestamp fetch
+
+            logger.info(f"Top 3 RAW scores for {namespace}: {[round(m.get('score', 0), 4) for m in raw_matches[:3]]}")
+
+            # Step 2: HARD FILTER by Semantic Score
+            # We filter *before* fetching timestamps to save DB calls
+            filtered_matches = [
+                m for m in raw_matches
+                if m.get("score", 0.0) >= MIN_SEMANTIC_THRESHOLD
+            ]
+
+            if not filtered_matches:
+                logger.info(f"Using strict threshold {MIN_SEMANTIC_THRESHOLD}: 0 matches passed (out of {len(raw_matches)} raw)")
+                return []
+
+            # Step 3: Extract supabase_ids for batch timestamp fetch
             supabase_ids = []
-            for match in raw_matches:
+            for match in filtered_matches:
                 sid = match.get("metadata", {}).get("supabase_id")
                 if sid:
                     try:
                         supabase_ids.append(int(sid))
                     except (ValueError, TypeError):
                         pass
-            
-            # Step 3: Fetch timestamps in batch
+
+            # Step 4: Fetch timestamps in batch
             timestamps = self._fetch_timestamps_batch(supabase_ids, namespace)
-            
-            # Step 4: Calculate hybrid scores and re-rank
+
+            # Step 5: Score and Format Matches
             scored_matches = []
-            for match in raw_matches:
+            for match in filtered_matches:
                 metadata = match.get("metadata", {})
                 supabase_id = str(metadata.get("supabase_id", ""))
-                
-                # Semantic score from Pinecone
+
+                # Semantic score from Pinecone (raw cosine similarity)
                 semantic_score = match.get("score", 0.0)
-                
+
                 # Recency score from timestamp
                 posted_at = timestamps.get(supabase_id)
                 recency_score = self.calculate_recency_score(posted_at)
-                
-                # Hybrid score
-                final_score = (semantic_score * SEMANTIC_WEIGHT) + (recency_score * RECENCY_WEIGHT)
-                
-                # Build match dict with hybrid score
+
+                # Hybrid score using new weights (90% Semantic, 10% Recency)
+                hybrid_score = (semantic_score * SEMANTIC_WEIGHT) + (recency_score * RECENCY_WEIGHT)
+
+                # Raw scores are ~0.10 due to likely model mismatch or format asymmetry.
+                # Scale by 6x so UI shows readable percentages (0.10 -> 60%) while we debug.
+                match_percentage = min(1.0, round(semantic_score * 6.0, 4))
+
+                # Build match dict
                 match_dict = {
                     "id": match.get("id"),
-                    "score": round(final_score, 4),  # Hybrid score
-                    "semantic_score": round(semantic_score, 4),  # Original
-                    "recency_score": round(recency_score, 4),  # Recency component
+                    "score": round(hybrid_score, 4),        # Hybrid score (for internal sorting only)
+                    "match_percentage": match_percentage,   # Raw semantic score (display this as % to users)
+                    "semantic_score": round(semantic_score, 4),  # Raw Pinecone cosine similarity
+                    "recency_score": round(recency_score, 4),    # Recency component
                     "title": metadata.get("title", "Unknown"),
                     "company": metadata.get("company", "Unknown"),
                     "link": metadata.get("link", ""),
@@ -331,59 +375,71 @@ class StrategistService:
                     "supabase_id": metadata.get("supabase_id"),
                     "posted_at": posted_at.isoformat() if posted_at else None,
                 }
-                
+
                 scored_matches.append(match_dict)
-            
-            # Step 5: Sort by hybrid score (descending) and return top_k
+
+            # Step 6: Sort by hybrid score (descending) and return top_k
             scored_matches.sort(key=lambda x: x["score"], reverse=True)
             final_matches = scored_matches[:top_k]
-            
-            # Log recency boost stats
+
             if final_matches:
                 avg_recency = sum(m["recency_score"] for m in final_matches) / len(final_matches)
                 logger.info(
-                    f"[Recency Boost] {namespace}: {len(final_matches)} results, "
-                    f"avg_recency={avg_recency:.2f}, "
-                    f"top_hybrid={final_matches[0]['score']:.3f}"
+                    f"[Agent 3] {namespace}: {len(final_matches)} filtered matches. "
+                    f"Top Score: {final_matches[0]['match_percentage']:.2%} "
+                    f"(Sem={final_matches[0]['semantic_score']:.4f}, Rec={final_matches[0]['recency_score']:.4f})"
                 )
-            
+
             return final_matches
-        
+
         except Exception as e:
             logger.error(f"Query failed for namespace {namespace}: {e}")
             return []
-    
+
     def _save_today_data(self, user_id: str, data: dict[str, Any]) -> bool:
         """
         Save/update user's today_data (upsert).
         Uses write-through: DB first, then cache.
         Replaces previous day's data for this user.
         """
+        import json
+        import traceback
+
         try:
             updated_at = datetime.now(timezone.utc).isoformat()
+
+            # Pre-serialize via JSON round-trip to strip any datetime/non-JSON
+            # types that would cause the Supabase client to fail silently.
+            json_safe_data = json.loads(json.dumps(data, default=str))
+
             payload = {
                 "user_id": user_id,
-                "data_json": data,
+                "data_json": json_safe_data,
                 "updated_at": updated_at
             }
-            
+
+            logger.info(f"💾 Upserting today_data for {user_id} (jobs={len(json_safe_data.get('jobs', []))})...")
+
             # Upsert: insert or update on conflict (DB first for consistency)
-            self.supabase.table("today_data").upsert(
+            response = self.supabase.table("today_data").upsert(
                 payload,
                 on_conflict="user_id"
             ).execute()
-            
+
+            logger.info(f"✅ Supabase upsert response: {response.data}")
+
             # Update cache after successful DB write (write-through)
             cache_service.set_today_data(user_id, {
-                "data": data,
+                "data": json_safe_data,
                 "updated_at": updated_at
             })
-            
+
             return True
         except Exception as e:
-            logger.error(f"Failed to save today_data for {user_id}: {e}")
+            logger.error(f"❌ Failed to save today_data for {user_id}: {e}")
+            logger.error(traceback.format_exc())
             return False
-    
+
     def get_user_today_data(self, user_id: str) -> Optional[dict[str, Any]]:
         """
         Get a user's today_data.
@@ -394,14 +450,14 @@ class StrategistService:
         if cached:
             logger.debug(f"Cache HIT for today_data:{user_id}")
             return cached
-        
+
         # Cache miss - fetch from DB
         logger.debug(f"Cache MISS for today_data:{user_id}, fetching from DB")
         try:
             result = self.supabase.table("today_data").select(
                 "data_json, updated_at"
             ).eq("user_id", user_id).single().execute()
-            
+
             if result.data:
                 data = {
                     "data": result.data.get("data_json", {}),
@@ -414,7 +470,7 @@ class StrategistService:
         except Exception as e:
             logger.error(f"Failed to get today_data for {user_id}: {e}")
             return None
-    
+
     def _generate_hot_skills(self, user_skills: list[str], target_roles: list[str], matched_jobs: list[dict]) -> list[dict]:
         """
         Generate AI-powered hot skills recommendations based on user profile and job matches.
@@ -427,12 +483,12 @@ class StrategistService:
                 {"skill": s, "demand_trend": "rising", "reason": f"High demand in {target_roles[0] if target_roles else 'tech'} roles"}
                 for s in trending[:3] if s not in user_skills
             ]
-        
+
         try:
             # Build context from jobs
             job_titles = [j.get("title", "") for j in matched_jobs[:5]]
             job_summaries = [j.get("summary", "")[:100] for j in matched_jobs[:3]]
-            
+
             prompt = f"""You are a career skills advisor. Based on the user's profile and job market data, suggest 3 hot skills to learn.
 
 USER PROFILE:
@@ -455,7 +511,7 @@ Return ONLY the JSON array, no markdown."""
                 model="gemini-2.0-flash",
                 contents=prompt,
             )
-            
+
             import json
             text = response.text.strip()
             # Clean markdown if present
@@ -464,43 +520,43 @@ Return ONLY the JSON array, no markdown."""
                 if text.startswith("json"):
                     text = text[4:]
                 text = text.strip()
-            
+
             skills = json.loads(text)
             if isinstance(skills, list) and len(skills) > 0:
                 return skills[:3]
-                
+
         except Exception as e:
             logger.warning(f"Hot skills generation failed: {e}")
-        
+
         # Fallback
         return [
             {"skill": "AI/ML", "demand_trend": "rising", "reason": "High demand across all tech roles"},
             {"skill": "Cloud Architecture", "demand_trend": "rising", "reason": "Essential for modern systems"},
             {"skill": "System Design", "demand_trend": "stable", "reason": "Key for senior positions"}
         ]
-    
+
     def process_single_user(self, user_id: str) -> dict[str, Any]:
         """
         Process a single user: get their vector and match against all namespaces.
         Also generates AI hot skills recommendations.
         For jobs with match < 80%, generates roadmaps.
         For ALL jobs, generates default application text.
-        
+
         CRON CACHE WARMING: Also refreshes profile and github_activity caches.
         Returns the generated today_data.
         """
         logger.info(f"Processing user: {user_id}")
-        
+
         # =========================================================================
         # CACHE WARMING: Fetch and cache full profile during cron
         # =========================================================================
         profile_response = self.supabase.table("profiles").select("*").eq("user_id", user_id).execute()
-        
+
         user_skills = []
         target_roles = []
         user_profile = {}
         github_url = None
-        
+
         if profile_response.data:
             profile_data = profile_response.data[0]
             user_skills = profile_data.get("skills", []) or []
@@ -512,11 +568,11 @@ Return ONLY the JSON array, no markdown."""
                 "target_roles": target_roles,
                 "experience_summary": profile_data.get("experience_summary", "")
             }
-            
+
             # Warm the profile cache
             cache_service.set_profile(user_id, profile_data)
             logger.info(f"🔥 Cache WARMED for profile:{user_id}")
-        
+
         # =========================================================================
         # CACHE WARMING: Fetch and cache github_activity during cron
         # =========================================================================
@@ -525,34 +581,34 @@ Return ONLY the JSON array, no markdown."""
                 github_response = self.supabase.table("github_activity_cache").select(
                     "detected_skills, repos_touched, tech_stack, insight_message, analyzed_at"
                 ).eq("user_id", user_id).execute()
-                
+
                 if github_response.data:
                     cache_service.set_github_activity(user_id, github_response.data[0])
                     logger.info(f"🔥 Cache WARMED for github_activity:{user_id}")
             except Exception as e:
                 logger.warning(f"Could not warm github_activity cache: {e}")
-        
+
         # Get user embedding
         user_vector = self._get_user_embedding(user_id)
         if not user_vector:
             logger.warning(f"No embedding found for user {user_id}")
             return {"error": "No user embedding found"}
-        
+
         # Query all namespaces
         jobs = self._query_namespace(user_vector, NAMESPACE_JOBS, top_k=10)
         hackathons = self._query_namespace(user_vector, NAMESPACE_HACKATHONS, top_k=10)
         news = self._query_namespace(user_vector, NAMESPACE_NEWS, top_k=5)
-        
+
         # Generate AI hot skills based on user profile and matched jobs
         hot_skills = self._generate_hot_skills(user_skills, target_roles, jobs)
-        
+
         # =========================================================================
         # NEW: Use orchestrator to enrich jobs with roadmaps and application text
         # This happens at fetch time - no further processing after cron job
         # =========================================================================
         try:
             from .orchestrator import run_orchestration
-            
+
             logger.info(f"🎯 Running orchestration for {len(jobs)} jobs...")
             today_data = run_orchestration(
                 user_id=user_id,
@@ -563,7 +619,7 @@ Return ONLY the JSON array, no markdown."""
                 hot_skills=hot_skills
             )
             logger.info(f"✅ Orchestration complete: {today_data.get('stats', {})}")
-            
+
         except Exception as e:
             logger.error(f"❌ Orchestration failed, using basic data: {e}")
             # Fallback to basic data without enrichment
@@ -579,20 +635,20 @@ Return ONLY the JSON array, no markdown."""
                     "news_count": len(news)
                 }
             }
-        
+
         # Save to database (upsert - replaces previous day)
         success = self._save_today_data(user_id, today_data)
-        
+
         if success:
             stats = today_data.get("stats", {})
             logger.info(f"✅ Saved today_data for {user_id}: {stats.get('jobs_count', 0)} jobs ({stats.get('jobs_with_roadmap', 0)} with roadmaps), {stats.get('hackathons_count', 0)} hackathons, {stats.get('news_count', 0)} news")
-        
+
         return today_data
-    
+
     def run_daily_matching(self) -> dict[str, Any]:
         """
         Main cron entry point: Process all users.
-        
+
         Runs once per day to:
         1. Fetch all user_ids from profiles table
         2. For each user, generate personalized matches
@@ -602,26 +658,26 @@ Return ONLY the JSON array, no markdown."""
         logger.info("[Agent 3] Starting Daily User Matching")
         logger.info(f"[Agent 3] Timestamp: {datetime.now(timezone.utc).isoformat()}")
         logger.info("=" * 60)
-        
+
         result = {
             "status": "success",
             "users_processed": 0,
             "users_failed": 0,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        
+
         try:
             # Fetch all users
             users_response = self.supabase.table("profiles").select("user_id").execute()
-            
+
             if not users_response.data:
                 logger.warning("No users found in profiles table")
                 result["status"] = "no_users"
                 return result
-            
+
             user_ids = [u["user_id"] for u in users_response.data]
             logger.info(f"Found {len(user_ids)} users to process")
-            
+
             # Process each user
             for user_id in user_ids:
                 try:
@@ -630,20 +686,20 @@ Return ONLY the JSON array, no markdown."""
                 except Exception as e:
                     logger.error(f"Failed to process user {user_id}: {e}")
                     result["users_failed"] += 1
-            
+
             if result["users_failed"] > 0:
                 result["status"] = "partial_success"
-            
+
         except Exception as e:
             logger.error(f"Critical error in daily matching: {e}")
             result["status"] = "failed"
             result["error"] = str(e)
-        
+
         logger.info("=" * 60)
         logger.info(f"[Agent 3] Daily Matching Complete: {result['status']}")
         logger.info(f"[Agent 3] Processed: {result['users_processed']}, Failed: {result['users_failed']}")
         logger.info("=" * 60)
-        
+
         return result
 
 
