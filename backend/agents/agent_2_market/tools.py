@@ -40,20 +40,20 @@ genai.configure(api_key=GEMINI_API_KEY)
 # =============================================================================
 
 def search_jsearch_jobs(
-    query: str, 
+    query: str,
     num_results: int = 10,
     country: str = "in",
     date_posted: str = "month"
 ) -> list[dict[str, Any]]:
     """
     Search for jobs using RapidAPI JSearch.
-    
+
     Args:
         query: Job search query (e.g., "Frontend Developer")
         num_results: Maximum number of results to return
         country: Country code for job search
         date_posted: Filter by date posted (all, today, 3days, week, month)
-    
+
     Returns:
         List of normalized job dictionaries
     """
@@ -61,7 +61,7 @@ def search_jsearch_jobs(
     if not api_key:
         print("[JSearch] RAPIDAPI_KEY not found, skipping")
         return []
-    
+
     url = "https://jsearch.p.rapidapi.com/search"
     headers = {
         "X-RapidAPI-Key": api_key,
@@ -74,15 +74,15 @@ def search_jsearch_jobs(
         "country": country,
         "date_posted": date_posted
     }
-    
+
     try:
         print(f"[JSearch] Query: {query}")
         response = requests.get(url, headers=headers, params=params, timeout=20)
         response.raise_for_status()
-        
+
         data = response.json()
         raw_jobs = data.get("data", [])[:num_results]
-        
+
         jobs = []
         for job in raw_jobs:
             # Build location string
@@ -91,25 +91,25 @@ def search_jsearch_jobs(
             country_name = job.get("job_country", "")
             location_parts = [p for p in [city, state, country_name] if p]
             location = ", ".join(location_parts)
-            
+
             # Parse posted date
             posted_at = None
             if job.get("job_posted_at_timestamp"):
                 try:
                     posted_at = datetime.fromtimestamp(
-                        job["job_posted_at_timestamp"], 
+                        job["job_posted_at_timestamp"],
                         tz=timezone.utc
                     ).isoformat()
                 except:
                     pass
-            
+
             # Determine remote policy
             remote_policy = None
             if job.get("job_is_remote"):
                 remote_policy = "remote"
             elif "hybrid" in str(job.get("job_employment_type", "")).lower():
                 remote_policy = "hybrid"
-            
+
             jobs.append({
                 "title": job.get("job_title", "Unknown Title"),
                 "company": job.get("employer_name", "Unknown Company"),
@@ -123,10 +123,10 @@ def search_jsearch_jobs(
                 "source": "JSearch",
                 "platform": job.get("job_publisher", "JSearch"),
             })
-        
+
         print(f"[JSearch] Found {len(jobs)} jobs")
         return jobs
-        
+
     except requests.exceptions.RequestException as e:
         print(f"[JSearch] Request error: {str(e)}")
         return []
@@ -146,12 +146,12 @@ def search_serpapi_jobs(
 ) -> list[dict[str, Any]]:
     """
     Search for jobs using SerpAPI Google Jobs engine.
-    
+
     Args:
         query: Job search query
         num_results: Maximum results to return
         location: Location for job search
-    
+
     Returns:
         List of normalized job dictionaries
     """
@@ -159,7 +159,7 @@ def search_serpapi_jobs(
     if not api_key:
         print("[SerpAPI] SERPAPI_KEY not found, skipping")
         return []
-    
+
     url = "https://serpapi.com/search.json"
     params = {
         "engine": "google_jobs",
@@ -169,15 +169,15 @@ def search_serpapi_jobs(
         "gl": "in",
         "api_key": api_key
     }
-    
+
     try:
         print(f"[SerpAPI Jobs] Query: {query}")
         response = requests.get(url, params=params, timeout=20)
         response.raise_for_status()
-        
+
         data = response.json()
         raw_jobs = data.get("jobs_results", [])[:num_results]
-        
+
         jobs = []
         for job in raw_jobs:
             # Extract link from related_links
@@ -185,7 +185,7 @@ def search_serpapi_jobs(
             related_links = job.get("related_links", [])
             if related_links:
                 link = related_links[0].get("link", "")
-            
+
             # Parse extensions for remote policy
             extensions = job.get("extensions", [])
             remote_policy = None
@@ -195,7 +195,7 @@ def search_serpapi_jobs(
                     remote_policy = "remote"
                 elif "hybrid" in ext_lower:
                     remote_policy = "hybrid"
-            
+
             jobs.append({
                 "title": job.get("title", "Unknown Title"),
                 "company": job.get("company_name", "Unknown Company"),
@@ -208,10 +208,10 @@ def search_serpapi_jobs(
                 "source": "SerpAPI",
                 "platform": job.get("via", "Google Jobs"),
             })
-        
+
         print(f"[SerpAPI Jobs] Found {len(jobs)} jobs")
         return jobs
-        
+
     except requests.exceptions.RequestException as e:
         print(f"[SerpAPI Jobs] Request error: {str(e)}")
         return []
@@ -231,12 +231,12 @@ def search_mantiks_jobs(
 ) -> list[dict[str, Any]]:
     """
     Search for jobs using Mantiks Company Search API.
-    
+
     Args:
         job_title: Job title to search for
         num_results: Maximum results to return
         location_id: Mantiks location ID (optional)
-    
+
     Returns:
         List of normalized job dictionaries
     """
@@ -244,33 +244,34 @@ def search_mantiks_jobs(
     if not api_key:
         print("[Mantiks] MANTIKS_API_KEY not found, skipping")
         return []
-    
+
     url = "https://api.mantiks.io/company/search"
     headers = {
         "accept": "application/json",
-        "Authorization": f"Bearer {api_key}"
+        "X-API-KEY": api_key
     }
     params = {
         "job_title": job_title,
-        "limit": num_results
+        "limit": num_results,
+        "job_age_in_days": 30
     }
-    
+
     if location_id:
         params["job_location_ids"] = location_id
-    
+
     try:
         print(f"[Mantiks] Query: {job_title}")
         response = requests.get(url, headers=headers, params=params, timeout=20)
         response.raise_for_status()
-        
+
         data = response.json()
         companies = data.get("companies", [])
-        
+
         jobs = []
         for company in companies:
             company_name = company.get("name", "Unknown Company")
             company_jobs = company.get("jobs", [])
-            
+
             for job in company_jobs[:3]:  # Max 3 jobs per company
                 # Parse salary
                 salary_info = job.get("salary", {})
@@ -281,7 +282,7 @@ def search_mantiks_jobs(
                     sal_type = salary_info.get("type", "YEARLY")
                     if min_sal and max_sal:
                         salary_str = f"${min_sal:,} - ${max_sal:,} {sal_type}"
-                
+
                 jobs.append({
                     "title": job.get("job_title", "Unknown Title"),
                     "company": company_name,
@@ -294,16 +295,16 @@ def search_mantiks_jobs(
                     "source": "Mantiks",
                     "platform": job.get("job_board", "LinkedIn"),
                 })
-                
+
                 if len(jobs) >= num_results:
                     break
-            
+
             if len(jobs) >= num_results:
                 break
-        
+
         print(f"[Mantiks] Found {len(jobs)} jobs")
         return jobs
-        
+
     except requests.exceptions.RequestException as e:
         print(f"[Mantiks] Request error: {str(e)}")
         return []
@@ -322,43 +323,43 @@ def search_tavily_hackathons(
 ) -> list[dict[str, Any]]:
     """
     Search for hackathons using Tavily API.
-    
+
     Args:
         query: Search query for hackathons
         max_results: Maximum results to return
-    
+
     Returns:
         List of normalized hackathon dictionaries
     """
     try:
         from tavily import TavilyClient
-        
+
         api_key = os.getenv("TAVILY_API_KEY")
         if not api_key:
             print("[Tavily Hackathons] TAVILY_API_KEY not found")
             return []
-        
+
         client = TavilyClient(api_key=api_key)
-        
+
         # Target hackathon platforms specifically - India focused
         search_query = f"{query} hackathon India site:devpost.com OR site:devfolio.co OR site:gitcoin.co OR site:hackerearth.com OR site:mlh.io OR site:unstop.com"
-        
+
         print(f"[Tavily Hackathons] Query: {query}")
         results = client.search(
-            search_query, 
+            search_query,
             max_results=max_results,
             search_depth="advanced"
         )
-        
+
         hackathons = []
         for result in results.get("results", []):
             url = result.get("url", "")
             content = result.get("content", "")
             title = result.get("title", "")
-            
+
             # Extract bounty/prize amount
             bounty = _extract_bounty_from_text(content)
-            
+
             hackathons.append({
                 "title": title,
                 "company": _extract_platform_from_url(url),
@@ -370,10 +371,10 @@ def search_tavily_hackathons(
                 "platform": _extract_platform_from_url(url),
                 "bounty_amount": bounty,
             })
-        
+
         print(f"[Tavily Hackathons] Found {len(hackathons)} hackathons")
         return hackathons
-        
+
     except ImportError:
         print("[Tavily] tavily-python package not installed")
         return []
@@ -389,25 +390,25 @@ def search_tavily_news(
 ) -> list[dict[str, Any]]:
     """
     Search for tech/market news using Tavily API.
-    
+
     Args:
         query: Search query for news
         max_results: Maximum results to return
         days: Number of days to look back
-    
+
     Returns:
         List of normalized news dictionaries
     """
     try:
         from tavily import TavilyClient
-        
+
         api_key = os.getenv("TAVILY_API_KEY")
         if not api_key:
             print("[Tavily News] TAVILY_API_KEY not found")
             return []
-        
+
         client = TavilyClient(api_key=api_key)
-        
+
         # Add India focus to news search
         india_query = f"{query} India"
         print(f"[Tavily News] Query: {india_query}")
@@ -417,11 +418,11 @@ def search_tavily_news(
             search_depth="advanced",
             days=days
         )
-        
+
         news_items = []
         for result in results.get("results", []):
             url = result.get("url", "")
-            
+
             # Parse published date
             published_at = None
             if result.get("published_date"):
@@ -429,7 +430,7 @@ def search_tavily_news(
                     published_at = result["published_date"]
                 except:
                     pass
-            
+
             news_items.append({
                 "title": result.get("title", ""),
                 "url": url,
@@ -438,10 +439,10 @@ def search_tavily_news(
                 "published_at": published_at,
                 "topics": [],  # Will be enriched by LLM if needed
             })
-        
+
         print(f"[Tavily News] Found {len(news_items)} news articles")
         return news_items
-        
+
     except ImportError:
         print("[Tavily] tavily-python package not installed")
         return []
@@ -460,11 +461,11 @@ def search_serpapi_hackathons(
 ) -> list[dict[str, Any]]:
     """
     Search for hackathons using SerpAPI Google Search.
-    
+
     Args:
         query: Search query for hackathons
         num_results: Maximum results to return
-    
+
     Returns:
         List of normalized hackathon dictionaries
     """
@@ -472,34 +473,34 @@ def search_serpapi_hackathons(
     if not api_key:
         print("[SerpAPI Hackathons] SERPAPI_KEY not found, skipping")
         return []
-    
+
     url = "https://serpapi.com/search.json"
-    
+
     # Target hackathon platforms - India focused
     search_query = f"{query} hackathon India (site:devpost.com OR site:devfolio.co OR site:mlh.io OR site:unstop.com OR site:hackerearth.com)"
-    
+
     params = {
         "engine": "google",
         "q": search_query,
         "num": num_results,
         "api_key": api_key
     }
-    
+
     try:
         print(f"[SerpAPI Hackathons] Query: {query}")
         response = requests.get(url, params=params, timeout=20)
         response.raise_for_status()
-        
+
         data = response.json()
         organic_results = data.get("organic_results", [])[:num_results]
-        
+
         hackathons = []
         for result in organic_results:
             url = result.get("link", "")
             snippet = result.get("snippet", "")
-            
+
             bounty = _extract_bounty_from_text(snippet)
-            
+
             hackathons.append({
                 "title": result.get("title", ""),
                 "company": _extract_platform_from_url(url),
@@ -511,10 +512,10 @@ def search_serpapi_hackathons(
                 "platform": _extract_platform_from_url(url),
                 "bounty_amount": bounty,
             })
-        
+
         print(f"[SerpAPI Hackathons] Found {len(hackathons)} hackathons")
         return hackathons
-        
+
     except requests.exceptions.RequestException as e:
         print(f"[SerpAPI Hackathons] Request error: {str(e)}")
         return []
@@ -535,13 +536,13 @@ def search_newsdata_news(
 ) -> list[dict[str, Any]]:
     """
     Search for news using NewsData.io API.
-    
+
     Args:
         query: Search query for news
         num_results: Maximum results to return
         country: Country code
         language: Language code
-    
+
     Returns:
         List of normalized news dictionaries
     """
@@ -549,7 +550,7 @@ def search_newsdata_news(
     if not api_key:
         print("[NewsData] NEWSDATA_API_KEY not found, skipping")
         return []
-    
+
     url = "https://newsdata.io/api/1/latest"
     params = {
         "apikey": api_key,
@@ -558,20 +559,20 @@ def search_newsdata_news(
         "language": language,
         "category": "technology,business"
     }
-    
+
     try:
         print(f"[NewsData] Query: {query}")
         response = requests.get(url, params=params, timeout=20)
         response.raise_for_status()
-        
+
         data = response.json()
-        
+
         if data.get("status") != "success":
             print(f"[NewsData] API returned status: {data.get('status')}")
             return []
-        
+
         articles = data.get("results", [])[:num_results]
-        
+
         news_items = []
         for article in articles:
             # Parse published date
@@ -581,7 +582,7 @@ def search_newsdata_news(
                     published_at = article["pubDate"]
                 except:
                     pass
-            
+
             # Extract topics from keywords and category
             topics = []
             if article.get("keywords"):
@@ -589,7 +590,7 @@ def search_newsdata_news(
             if article.get("category"):
                 topics.extend(article["category"][:3])
             topics = list(set(topics))[:5]  # Dedupe and limit
-            
+
             news_items.append({
                 "title": article.get("title", ""),
                 "url": article.get("link", ""),
@@ -598,10 +599,10 @@ def search_newsdata_news(
                 "published_at": published_at,
                 "topics": topics,
             })
-        
+
         print(f"[NewsData] Found {len(news_items)} news articles")
         return news_items
-        
+
     except requests.exceptions.RequestException as e:
         print(f"[NewsData] Request error: {str(e)}")
         return []
@@ -620,11 +621,11 @@ def search_serpapi_news(
 ) -> list[dict[str, Any]]:
     """
     Search for news using SerpAPI Google News engine.
-    
+
     Args:
         query: Search query for news
         num_results: Maximum results to return
-    
+
     Returns:
         List of normalized news dictionaries
     """
@@ -632,7 +633,7 @@ def search_serpapi_news(
     if not api_key:
         print("[SerpAPI News] SERPAPI_KEY not found, skipping")
         return []
-    
+
     url = "https://serpapi.com/search.json"
     params = {
         "engine": "google_news",
@@ -641,15 +642,15 @@ def search_serpapi_news(
         "hl": "en",
         "api_key": api_key
     }
-    
+
     try:
         print(f"[SerpAPI News] Query: {query}")
         response = requests.get(url, params=params, timeout=20)
         response.raise_for_status()
-        
+
         data = response.json()
         news_results = data.get("news_results", [])[:num_results]
-        
+
         news_items = []
         for article in news_results:
             news_items.append({
@@ -660,10 +661,10 @@ def search_serpapi_news(
                 "published_at": article.get("date"),
                 "topics": [],
             })
-        
+
         print(f"[SerpAPI News] Found {len(news_items)} news articles")
         return news_items
-        
+
     except requests.exceptions.RequestException as e:
         print(f"[SerpAPI News] Request error: {str(e)}")
         return []
@@ -683,25 +684,25 @@ def optimize_roles_with_llm(
 ) -> list[str]:
     """
     Use Gemini to optimize and select the best roles for maximum coverage.
-    
+
     Args:
         roles: List of all user target roles
         skills: List of all user skills
         max_roles: Maximum number of roles to return
-    
+
     Returns:
         List of optimized roles (1-5)
     """
     if not roles:
         return ["Software Developer"]
-    
+
     if len(roles) <= max_roles:
         return roles
-    
+
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        
-        prompt = f"""You are a job market analyst. Given these target roles and skills from multiple users, 
+        model = genai.GenerativeModel("gemini-2.0-flash")
+
+        prompt = f"""You are a job market analyst. Given these target roles and skills from multiple users,
 select at most {max_roles} distinct job roles that best cover all users collectively.
 
 Target Roles: {json.dumps(roles)}
@@ -717,10 +718,10 @@ Rules:
 Return ONLY a JSON array of role strings, nothing else.
 Example: ["Frontend Developer", "Data Scientist", "DevOps Engineer"]
 """
-        
+
         response = model.generate_content(prompt)
         response_text = response.text.strip()
-        
+
         # Parse JSON response
         if response_text.startswith("[") or "{" in response_text:
             # Extract JSON from response (might have markdown or extra text)
@@ -736,11 +737,11 @@ Example: ["Frontend Developer", "Data Scientist", "DevOps Engineer"]
                         return optimized_roles[:max_roles]
                 except json.JSONDecodeError as e:
                     print(f"[LLM] JSON parse error: {e}")
-        
+
         # Fallback: return first N roles
         print("[LLM] Could not parse response, using fallback")
         return roles[:max_roles]
-        
+
     except Exception as e:
         print(f"[LLM] Role optimization error: {str(e)}")
         return roles[:max_roles]
@@ -753,18 +754,18 @@ def generate_search_queries_with_llm(
 ) -> list[str]:
     """
     Use Gemini to generate optimized search queries.
-    
+
     Args:
         roles: List of target roles
         skills: List of skills
         query_type: Type of queries to generate
-    
+
     Returns:
         List of search query strings
     """
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        
+        model = genai.GenerativeModel("gemini-2.0-flash")
+
         type_prompts = {
             "jobs": f"""Generate {min(5, len(roles))} optimized job search queries for these roles and skills.
 Roles: {json.dumps(roles)}
@@ -802,18 +803,18 @@ Rules:
 
 Return ONLY a JSON array of query strings."""
         }
-        
+
         prompt = type_prompts.get(query_type, type_prompts["jobs"])
         response = model.generate_content(prompt)
         response_text = response.text.strip()
-        
+
         # Parse JSON response
         if response_text.startswith("["):
             queries = json.loads(response_text)
             if isinstance(queries, list) and all(isinstance(q, str) for q in queries):
                 print(f"[LLM] Generated {query_type} queries: {queries}")
                 return queries[:5]
-        
+
         # Fallback queries
         fallback = {
             "jobs": [f"{role} developer" for role in roles[:3]],
@@ -821,7 +822,7 @@ Return ONLY a JSON array of query strings."""
             "news": [f"{skills[0] if skills else 'technology'} industry trends 2026"]
         }
         return fallback.get(query_type, [])
-        
+
     except Exception as e:
         print(f"[LLM] Query generation error: {str(e)}")
         # Return basic fallback queries
@@ -836,15 +837,15 @@ Return ONLY a JSON array of query strings."""
 def allocate_roles_to_providers(roles: list[str]) -> dict[str, list[str]]:
     """
     Intelligently allocate roles to job providers.
-    
+
     Strategy:
     - JSearch: Best for common tech roles (Frontend, Backend, Full Stack)
     - SerpAPI: Best for specialized/emerging roles (Web3, AI/ML)
     - Mantiks: Best for security and enterprise roles
-    
+
     Args:
         roles: List of roles to allocate
-    
+
     Returns:
         Dictionary with provider allocations
     """
@@ -853,20 +854,20 @@ def allocate_roles_to_providers(roles: list[str]) -> dict[str, list[str]]:
         "mantiks": [],
         "serpapi": []
     }
-    
+
     # Define provider strengths
     jsearch_keywords = ["frontend", "backend", "full stack", "fullstack", "web", "mobile", "react", "node", "python", "javascript"]
     mantiks_keywords = ["security", "cyber", "enterprise", "cloud", "devops", "sre", "infrastructure"]
     serpapi_keywords = ["web3", "blockchain", "ai", "ml", "machine learning", "data", "analyst", "scientist"]
-    
+
     for role in roles:
         role_lower = role.lower()
-        
+
         # Check which provider is best suited
         jsearch_score = sum(1 for kw in jsearch_keywords if kw in role_lower)
         mantiks_score = sum(1 for kw in mantiks_keywords if kw in role_lower)
         serpapi_score = sum(1 for kw in serpapi_keywords if kw in role_lower)
-        
+
         if mantiks_score >= jsearch_score and mantiks_score >= serpapi_score and mantiks_score > 0:
             allocation["mantiks"].append(role)
         elif serpapi_score >= jsearch_score and serpapi_score > 0:
@@ -874,7 +875,7 @@ def allocate_roles_to_providers(roles: list[str]) -> dict[str, list[str]]:
         else:
             # Default to JSearch for general roles
             allocation["jsearch"].append(role)
-    
+
     # Ensure balanced distribution: If Mantiks has 0 roles, redistribute
     if roles and len(allocation["mantiks"]) == 0 and len(roles) >= 3:
         # Move one role from jsearch or serpapi to mantiks for diversity
@@ -882,11 +883,11 @@ def allocate_roles_to_providers(roles: list[str]) -> dict[str, list[str]]:
             allocation["mantiks"].append(allocation["jsearch"].pop())
         elif allocation["serpapi"]:
             allocation["mantiks"].append(allocation["serpapi"].pop())
-    
+
     # Ensure at least one provider has roles if we have any
     if roles and not any(allocation.values()):
         allocation["jsearch"] = roles[:2]
-    
+
     print(f"[Allocation] JSearch: {allocation['jsearch']}, Mantiks: {allocation['mantiks']}, SerpAPI: {allocation['serpapi']}")
     return allocation
 
@@ -898,17 +899,17 @@ def allocate_roles_to_providers(roles: list[str]) -> dict[str, list[str]]:
 def generate_embedding(text: str) -> list[float]:
     """
     Generate embeddings using Google GenAI.
-    
+
     Args:
         text: Text to generate embedding for
-    
+
     Returns:
         List of embedding floats (768 dimensions)
     """
     api_key = os.getenv("GEMINI_API_KEY")
     try:
         embeddings_model = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004", 
+            model="models/text-embedding-004",
             google_api_key=api_key
         )
         return embeddings_model.embed_query(text)
@@ -933,14 +934,14 @@ def _extract_bounty_from_text(text: str) -> Optional[float]:
     """Extract prize/bounty amount from text."""
     if not text:
         return None
-    
+
     patterns = [
         r'\$[\d,]+(?:k|K)?',
         r'[\d,]+\s*(?:USD|dollars?)',
         r'prize[:\s]+\$?[\d,]+',
         r'[\d,]+\s*(?:in prizes|prize pool)'
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
@@ -962,7 +963,7 @@ def _extract_platform_from_url(url: str) -> str:
     try:
         from urllib.parse import urlparse
         domain = urlparse(url).netloc.lower()
-        
+
         platform_map = {
             "devpost": "Devpost",
             "devfolio": "Devfolio",
@@ -971,11 +972,11 @@ def _extract_platform_from_url(url: str) -> str:
             "mlh": "MLH",
             "hackathon.io": "Hackathon.io",
         }
-        
+
         for key, name in platform_map.items():
             if key in domain:
                 return name
-        
+
         return domain.replace("www.", "").split(".")[0].title()
     except Exception:
         return "Unknown"
@@ -1010,7 +1011,7 @@ def _extract_company_from_url(url: str) -> str:
 # =============================================================================
 
 def search_tavily(
-    query: str, 
+    query: str,
     search_type: Literal["job", "hackathon", "news"] = "job",
     max_results: int = 5
 ) -> list[dict[str, Any]]:

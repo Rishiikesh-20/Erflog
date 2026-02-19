@@ -40,16 +40,16 @@ class OrchestratorState(TypedDict):
     user_id: str
     user_profile: Dict[str, Any]
     user_vector: List[float]
-    
+
     # Fetched data
     jobs: List[Dict[str, Any]]
     hackathons: List[Dict[str, Any]]
     news: List[Dict[str, Any]]
     hot_skills: List[Dict[str, Any]]
-    
+
     # Processed data (enriched jobs with roadmaps and application text)
     enriched_jobs: List[Dict[str, Any]]
-    
+
     # Status
     status: str
     error: Optional[str]
@@ -84,14 +84,14 @@ def generate_roadmap_for_job(
     Returns a structured roadmap with nodes/edges for visualization.
     """
     client = get_gemini_client()
-    
+
     job_title = job.get("title", "Unknown Position")
     job_company = job.get("company", "Unknown Company")
     job_description = job.get("summary", "") or job.get("description", "")
     match_score = job.get("score", 0)
-    
+
     skills_text = ", ".join(user_skills) if user_skills else "Not specified"
-    
+
     prompt = f"""You are an expert Technical Curriculum Architect specializing in skill gap analysis.
 
 TASK: Create a 3-day intensive learning roadmap as a DIRECTED ACYCLIC GRAPH (DAG).
@@ -122,7 +122,7 @@ OUTPUT FORMAT (JSON ONLY):
                 "description": "What will be learned and why"
             }},
             {{
-                "id": "node2", 
+                "id": "node2",
                 "label": "Practical Implementation",
                 "day": 2,
                 "type": "practice",
@@ -161,14 +161,14 @@ Return ONLY valid JSON, no markdown, no explanations."""
         )
         text = response.text.replace("```json", "").replace("```", "").strip()
         roadmap = json.loads(text)
-        
+
         # Validate structure
         if "graph" not in roadmap or "nodes" not in roadmap.get("graph", {}):
             raise ValueError("Invalid roadmap structure")
-        
+
         logger.info(f"✅ Generated roadmap for {job_title}: {len(roadmap['graph']['nodes'])} nodes")
         return roadmap
-        
+
     except Exception as e:
         logger.error(f"❌ Roadmap generation failed for {job_title}: {e}")
         # Return fallback roadmap
@@ -207,17 +207,17 @@ def generate_application_text(
     Returns copy-paste ready responses for common application questions.
     """
     client = get_gemini_client()
-    
+
     job_title = job.get("title", "Position")
     job_company = job.get("company", "Company")
     job_description = job.get("summary", "") or job.get("description", "")
-    
+
     user_name = user_profile.get("name", "Candidate")
     user_skills = user_profile.get("skills", [])
     user_experience = user_profile.get("experience_summary", "")
-    
+
     skills_text = ", ".join(user_skills[:10]) if isinstance(user_skills, list) else str(user_skills)
-    
+
     prompt = f"""You are an expert career coach helping craft compelling job application responses.
 
 CONTEXT:
@@ -252,10 +252,10 @@ Return ONLY valid JSON."""
         )
         text = response.text.replace("```json", "").replace("```", "").strip()
         application_text = json.loads(text)
-        
+
         logger.info(f"✅ Generated application text for {job_title} at {job_company}")
         return application_text
-        
+
     except Exception as e:
         logger.error(f"❌ Application text generation failed: {e}")
         return {
@@ -280,7 +280,7 @@ def generate_tailored_resume(
 ) -> Dict[str, Any]:
     """
     Generate a tailored LaTeX resume for a specific job using Agent 4's engine.
-    
+
     This function:
     1. Downloads the user's original resume PDF
     2. Extracts and structures content
@@ -288,30 +288,30 @@ def generate_tailored_resume(
     4. Renders LaTeX template
     5. Compiles PDF
     6. Uploads to Supabase storage
-    
+
     Args:
         user_id: The user's UUID
         job: Job dictionary with title, company, description, etc.
-    
+
     Returns:
         Dictionary with status, pdf_url (if success), or error message
     """
     try:
         # Import Agent 4's mutate function (relative import from sibling package)
         from agents.agent_4_operative.tools import mutate_resume_for_job
-        
+
         # Build job description string for the optimizer
         job_title = job.get("title", "Position")
         job_company = job.get("company", "Company")
         job_description = job.get("summary", "") or job.get("description", "")
         job_requirements = job.get("requirements", [])
-        
+
         # Build comprehensive job description
         if isinstance(job_requirements, list):
             requirements_text = "\n".join(f"- {req}" for req in job_requirements)
         else:
             requirements_text = str(job_requirements) if job_requirements else ""
-        
+
         full_job_description = f"""
 Job Title: {job_title}
 Company: {job_company}
@@ -322,19 +322,19 @@ Description:
 Requirements:
 {requirements_text}
 """
-        
+
         logger.info(f"🎨 Generating tailored resume for {job_title} at {job_company}")
-        
+
         # Call Agent 4's mutate function
         result = mutate_resume_for_job(user_id, full_job_description)
-        
+
         if result.get("status") == "success":
             logger.info(f"✅ Resume generated and uploaded: {result.get('pdf_url', 'N/A')[:60]}...")
             return result
         else:
             logger.error(f"❌ Resume mutation failed: {result.get('message', 'Unknown error')}")
             return result
-            
+
     except ImportError as e:
         logger.error(f"❌ Failed to import Agent 4 tools: {e}")
         return {"status": "error", "message": f"Import error: {e}"}
@@ -353,49 +353,52 @@ def enrich_jobs_node(state: OrchestratorState) -> dict:
     - Jobs with score >= 0.80: No roadmap needed (high match)
     - Jobs with score < 0.80: Generate roadmap
     - All jobs: Generate default application text
-    
+
     Note: Resume generation is user-triggered (not part of cron) to avoid heavy processing.
     """
     jobs = state.get("jobs", [])
     user_id = state.get("user_id")
     user_profile = state.get("user_profile", {})
     user_skills = user_profile.get("skills", [])
-    
+
     if not jobs:
         logger.warning("No jobs to enrich")
         return {"enriched_jobs": [], "status": "no_jobs"}
-    
+
     enriched_jobs = []
-    
+
     for idx, job in enumerate(jobs):
         score = job.get("score", 0)
+        # Use match_percentage (normalized semantic score) for roadmap threshold.
+        # Falls back to score if match_percentage is missing (backward compat).
+        match_pct = job.get("match_percentage", score)
         job_id = job.get("id", "unknown")
         job_title = job.get("title", "Position")
         job_company = job.get("company", "Company")
-        
-        logger.info(f"Processing job {idx+1}/{len(jobs)}: {job_title} at {job_company} (score: {score:.2%})")
-        
+
+        logger.info(f"Processing job {idx+1}/{len(jobs)}: {job_title} at {job_company} (match: {match_pct:.1%})")
+
         enriched_job = {**job}
-        
-        # Generate roadmap only for jobs with match < 80%
-        if score < 0.80:
-            logger.info(f"  → Generating roadmap (score {score:.1%} < 80%)")
+
+        # Generate roadmap only for jobs with match_percentage < 80%
+        if match_pct < 0.80:
+            logger.info(f"  → Generating roadmap (match {match_pct:.1%} < 80%)")
             enriched_job["roadmap"] = generate_roadmap_for_job(user_skills, job)
             enriched_job["needs_improvement"] = True
         else:
-            logger.info(f"  → High match ({score:.1%} >= 80%), no roadmap needed")
+            logger.info(f"  → High match ({match_pct:.1%} >= 80%), no roadmap needed")
             enriched_job["roadmap"] = None
             enriched_job["needs_improvement"] = False
-        
+
         # Generate application text for ALL jobs
         logger.info(f"  → Generating application text")
         enriched_job["application_text"] = generate_application_text(user_profile, job)
-        
+
         # Resume URL is null - user will generate on-demand via Apply page
         enriched_job["resume_url"] = None
-        
+
         enriched_jobs.append(enriched_job)
-    
+
     logger.info(f"✅ Enriched {len(enriched_jobs)} jobs")
     return {"enriched_jobs": enriched_jobs, "status": "enriched"}
 
@@ -405,15 +408,15 @@ def finalize_node(state: OrchestratorState) -> dict:
     Final node - prepare data for storage.
     """
     enriched_jobs = state.get("enriched_jobs", [])
-    
+
     # Count statistics
     jobs_with_roadmap = sum(1 for j in enriched_jobs if j.get("roadmap"))
     high_match_jobs = sum(1 for j in enriched_jobs if not j.get("needs_improvement"))
-    
+
     logger.info(f"📊 Final Stats: {len(enriched_jobs)} jobs total")
     logger.info(f"   - High match (≥80%): {high_match_jobs}")
     logger.info(f"   - Need improvement: {jobs_with_roadmap}")
-    
+
     return {"status": "complete"}
 
 
@@ -424,16 +427,16 @@ def finalize_node(state: OrchestratorState) -> dict:
 def build_orchestrator_graph() -> StateGraph:
     """Build the orchestrator workflow graph."""
     workflow = StateGraph(OrchestratorState)
-    
+
     # Add nodes
     workflow.add_node("enrich_jobs", enrich_jobs_node)
     workflow.add_node("finalize", finalize_node)
-    
+
     # Define edges
     workflow.add_edge(START, "enrich_jobs")
     workflow.add_edge("enrich_jobs", "finalize")
     workflow.add_edge("finalize", END)
-    
+
     return workflow.compile()
 
 
@@ -455,7 +458,7 @@ def run_orchestration(
 ) -> Dict[str, Any]:
     """
     Run the full orchestration workflow for a user.
-    
+
     Args:
         user_id: User's UUID
         user_profile: User profile data (name, skills, experience_summary)
@@ -463,12 +466,12 @@ def run_orchestration(
         hackathons: List of matched hackathons
         news: List of matched news
         hot_skills: AI-generated hot skills
-    
+
     Returns:
         Complete today_data with enriched jobs (roadmaps + application text)
     """
     logger.info(f"🚀 Starting orchestration for user {user_id[:8]}...")
-    
+
     initial_state: OrchestratorState = {
         "user_id": user_id,
         "user_profile": user_profile,
@@ -481,10 +484,10 @@ def run_orchestration(
         "status": "starting",
         "error": None
     }
-    
+
     try:
         result = orchestrator_graph.invoke(initial_state)
-        
+
         # Build final today_data structure
         today_data = {
             "jobs": result.get("enriched_jobs", []),
@@ -500,15 +503,15 @@ def run_orchestration(
                 "news_count": len(news or [])
             }
         }
-        
+
         logger.info(f"✅ Orchestration complete for user {user_id[:8]}")
         return today_data
-        
+
     except Exception as e:
         logger.error(f"❌ Orchestration failed: {e}")
         import traceback
         traceback.print_exc()
-        
+
         # Return basic data without enrichment on failure
         return {
             "jobs": jobs or [],
