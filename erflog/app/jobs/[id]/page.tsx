@@ -53,7 +53,7 @@ export default function JobDetailPage() {
             roadmap_details: foundJob.roadmap || null,
             needs_improvement: foundJob.needs_improvement,
           });
-          
+
           // Check if this job is saved and get the saved_job_id for progress tracking
           try {
             const savedCheck = await api.checkJobSaved(user.id, String(foundJob.id));
@@ -116,7 +116,7 @@ export default function JobDetailPage() {
     );
   }
 
-  const matchPercentage = Math.round(job.score * 100);
+  const matchPercentage = Math.round((job.match_percentage ?? job.score) * 100);
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-8">

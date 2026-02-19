@@ -35,7 +35,7 @@ export default function SavedJobsPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!user?.id) return;
-      
+
       setIsLoading(true);
       try {
         const [jobs, roadmaps] = await Promise.all([
@@ -304,9 +304,10 @@ export default function SavedJobsPage() {
                       </h3>
                       <p className="text-sm text-gray-600">{job.company}</p>
                     </div>
-                    {job.score && (
+                    {(job.score || (job.full_job_data as any)?.match_percentage) && (
                       <div className="px-3 py-1.5 bg-orange-50 text-[#D95D39] rounded-lg text-sm font-bold">
-                        {Math.round(job.score * 100)}%
+                        {/* Prefer match_percentage (semantic %) if saved in full_job_data */}
+                        {Math.round(((job.full_job_data as any)?.match_percentage ?? job.score ?? 0) * 100)}%
                       </div>
                     )}
                   </div>
@@ -319,13 +320,13 @@ export default function SavedJobsPage() {
                         <span className="text-[#D95D39] font-bold">
                           {(() => {
                             const fullJobData = job.roadmap_details?.full_job_data as any;
-                            const graph = job.roadmap_details?.graph || 
+                            const graph = job.roadmap_details?.graph ||
                               fullJobData?.roadmap?.graph;
                             const totalNodes = graph?.nodes?.length || 0;
                             const completedNodes = Object.values(job.progress).filter(
                               (p: any) => p.completed
                             ).length;
-                            return totalNodes > 0 
+                            return totalNodes > 0
                               ? `${Math.round((completedNodes / totalNodes) * 100)}%`
                               : "0%";
                           })()}
@@ -337,13 +338,13 @@ export default function SavedJobsPage() {
                           style={{
                             width: (() => {
                               const fullJobData = job.roadmap_details?.full_job_data as any;
-                              const graph = job.roadmap_details?.graph || 
+                              const graph = job.roadmap_details?.graph ||
                                 fullJobData?.roadmap?.graph;
                               const totalNodes = graph?.nodes?.length || 0;
                               const completedNodes = Object.values(job.progress).filter(
                                 (p: any) => p.completed
                               ).length;
-                              return totalNodes > 0 
+                              return totalNodes > 0
                                 ? `${(completedNodes / totalNodes) * 100}%`
                                 : "0%";
                             })(),
