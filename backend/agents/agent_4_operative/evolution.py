@@ -4,7 +4,9 @@ from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
 from pinecone import Pinecone
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from google import genai
+from google.genai import types
 from langchain_core.prompts import ChatPromptTemplate
 
 # Load environment variables
@@ -78,11 +80,8 @@ def update_vector_memory(
     index_name = os.getenv("PINECONE_INDEX_NAME", "ai-verse")
     index = pc.Index(index_name)
     
-    # Initialize embeddings
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=os.getenv("GEMINI_API_KEY")
-    )
+    # Initialize embeddings via google.genai
+    genai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     
     result = {
         "status": "success",
@@ -141,7 +140,12 @@ def update_vector_memory(
             anti_pattern_id = f"anti_{user_id}_{hash(gap_analysis) % 10000}"
             
             # Generate embedding for the gap analysis
-            gap_embedding = embeddings.embed_query(gap_analysis)
+            gap_response = genai_client.models.embed_content(
+                model="gemini-embedding-001",
+                contents=gap_analysis,
+                config=types.EmbedContentConfig(output_dimensionality=768),
+            )
+            gap_embedding = gap_response.embeddings[0].values
             
             anti_pattern_metadata = {
                 "user_id": user_id,
@@ -178,13 +182,15 @@ def check_anti_patterns(user_id: str, job_description: str, threshold: float = 0
     index_name = os.getenv("PINECONE_INDEX_NAME", "ai-verse")
     index = pc.Index(index_name)
     
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=os.getenv("GEMINI_API_KEY")
-    )
+    genai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     
     # Generate embedding for job description
-    job_embedding = embeddings.embed_query(job_description)
+    job_response = genai_client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=job_description,
+        config=types.EmbedContentConfig(output_dimensionality=768),
+    )
+    job_embedding = job_response.embeddings[0].values
     
     # Query anti-patterns namespace
     query_response = index.query(
