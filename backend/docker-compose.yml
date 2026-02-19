@@ -16,19 +16,19 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build: .
-    container_name: careerflow-api
-    ports:
-      - "8080:8080"
-    environment:
-      - REDIS_URL=redis://redis:6379
-    env_file:
-      - .env
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
+  # backend:
+  #   build: .
+  #   container_name: careerflow-api
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     - REDIS_URL=redis://redis:6379
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   restart: unless-stopped
 
 volumes:
   redis_data:

@@ -1,0 +1,15 @@
+--------------------------------------------------
+[PASS] Gemini          OK
+[FAIL] JSearch         HTTPSConnectionPool(host='jsearch.p.rapidapi.com', port=443): Read timed out. (read timeout=10)
+[PASS] Tavily          OK - Response: {"query":"test","response_time":0.72,"follow_up_questions":null,"answer":null,"images":[],"results":...
+[PASS] SerpAPI         OK - Response: {
+  "search_metadata": {
+    "id": "6996a8cbbca7e585c753f2e0",
+    "status": "Success",
+    "json_en...
+[PASS] Mantiks         OK - Response: {"companies":[{"description":"Innostax is a software consulting company with focus on consulting, te...
+[PASS] NewsData        OK - Response: {"status":"success","totalResults":26324,"results":[{"article_id":"b4592ca702660603a40b1e32a958c808"...
+[PASS] Supabase        OK
+[PASS] Pinecone        OK (1 indexes)
+--------------------------------------------------
+Summary: 7/8 Services Operational
