@@ -64,14 +64,19 @@ class PerceptionService:
         try:
             # 2. Upload to Storage (Long-term)
             resume_url = upload_resume_to_storage(str(pdf_path), user_id)
+            print(f"✅ [DEBUG] Step 2 done - resume_url: {resume_url is not None}")
 
             # 3. Parse & Extract
             resume_text = parse_pdf(str(pdf_path))
+            print(f"✅ [DEBUG] Step 3a done - parsed {len(resume_text)} chars")
             extracted_data = extract_structured_data(resume_text)
+            print(f"✅ [DEBUG] Step 3b done - extracted: name={extracted_data.get('name')}, skills={len(extracted_data.get('skills', []))}")
             
             # 4. Generate Vector
             summary = extracted_data.get("experience_summary", resume_text[:500])
+            print(f"✅ [DEBUG] Step 4 generating embedding for summary ({len(summary)} chars)...")
             embedding = generate_embedding(summary)
+            print(f"✅ [DEBUG] Step 4 done - embedding dim: {len(embedding)}")
 
             # 5. Build skills_metadata from extracted skills
             skills_list = extracted_data.get("skills", [])
@@ -86,6 +91,7 @@ class PerceptionService:
                     "evidence": "Listed in resume",
                     "last_seen": now
                 }
+            print(f"✅ [DEBUG] Step 5 done - {len(skills_metadata)} skills")
 
             # 6. Calculate ATS Score for primary resume
             print(f"📊 [Agent 1] Calculating ATS score for user: {user_id}")
