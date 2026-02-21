@@ -90,6 +90,8 @@ class GenerateResumeResponse(BaseModel):
     optimized_resume: Optional[dict] = {}
     pdf_path: str = ""
     pdf_url: Optional[str] = ""  # Supabase storage URL
+    ats_score_before: Optional[int] = 0
+    ats_score_after: Optional[int] = 0
     recruiter_email: Optional[str] = None
     application_status: Literal["pending", "ready", "applied", "rejected", "failed"] = "pending"
     processing_time_ms: int = 0

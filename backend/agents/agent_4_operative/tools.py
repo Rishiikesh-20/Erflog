@@ -68,6 +68,33 @@ async def calculate_ats_score(resume_text: str) -> dict:
         print(f"   ❌ ATS Analysis error: {e}")
         return {"score": 0, "missing_keywords": [], "summary": "Error during analysis."}
 
+def calculate_ats_score_sync(resume_text: str) -> dict:
+    """Synchronous version of ATS compatibility score calculation."""
+    print("📊 [Agent 4] Calculating ATS Score (Sync)...")
+    
+    if not resume_text or len(resume_text.strip()) < 50:
+        return {"score": 0, "missing_keywords": [], "summary": "Resume text too short."}
+    
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        google_api_key=os.getenv("GEMINI_API_KEY"),
+        temperature=0.1
+    )
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an expert ATS scanner. Return JSON with 'score' (0-100), 'missing_keywords' (list), and 'summary'."),
+        ("human", "Analyze this resume text:\n{resume_text}")
+    ])
+    
+    try:
+        chain = prompt | llm | JsonOutputParser()
+        result = chain.invoke({"resume_text": resume_text[:8000]})
+        result["score"] = max(0, min(100, int(result.get("score", 50))))
+        return result
+    except Exception as e:
+        print(f"   ❌ ATS Analysis error: {e}")
+        return {"score": 0, "missing_keywords": [], "summary": "Error during analysis."}
+
 
 # =============================================================================
 # 2. AUTO-APPLY AGENT
@@ -208,6 +235,11 @@ def mutate_resume_for_job(user_id: str, job_description: str) -> dict:
         raw_text = extract_text(original_pdf)
         print(f"📄 [Agent 4] Extracted {len(raw_text)} chars from original PDF")
         
+        # Calculate ATS score BEFORE tailoring
+        ats_before_result = calculate_ats_score_sync(raw_text)
+        ats_score_before = ats_before_result.get("score", 0)
+        print(f"📊 [Agent 4] ATS Score (Before): {ats_score_before}")
+        
         contact_info = parse_resume_contact(raw_text) # Helper defined below
         
         structured_data = structure_resume_content(raw_text, job_description, contact_info)
@@ -216,6 +248,20 @@ def mutate_resume_for_job(user_id: str, job_description: str) -> dict:
         if structured_data is None:
             print("❌ [Agent 4] Error: structure_resume_content returned None")
             raise ValueError("Failed to structure resume content - Gemini API may be unavailable")
+            
+        # Create a text representation of structured data for the "After" ATS score
+        structured_text_for_ats = f"""
+        Name: {structured_data.get('name', '')}
+        Experience: {str(structured_data.get('experience', []))}
+        Education: {str(structured_data.get('education', []))}
+        Projects: {str(structured_data.get('projects', []))}
+        Skills: {str(structured_data.get('skills', {}))}
+        """
+        
+        # Calculate ATS score AFTER tailoring
+        ats_after_result = calculate_ats_score_sync(structured_text_for_ats)
+        ats_score_after = ats_after_result.get("score", 0)
+        print(f"📊 [Agent 4] ATS Score (After): {ats_score_after}")
         
         print(f"📋 [Agent 4] Structured data keys: {list(structured_data.keys())}")
         print(f"📋 [Agent 4] Name: {structured_data.get('name', 'MISSING!')}")
@@ -264,7 +310,13 @@ def mutate_resume_for_job(user_id: str, job_description: str) -> dict:
             print(f"⚠️ [Agent 4] Failed to save sec_resume_url to DB: {db_err}")
             # Don't fail the whole request if DB update fails
         
-        return {"status": "success", "pdf_url": public_url, "pdf_path": final_pdf_path}
+        return {
+            "status": "success", 
+            "pdf_url": public_url, 
+            "pdf_path": final_pdf_path,
+            "ats_score_before": ats_score_before,
+            "ats_score_after": ats_score_after
+        }
     except Exception as e:
         print(f"❌ Mutation failed: {e}")
         import traceback
@@ -287,6 +339,7 @@ Optimize the content to match the Job Description (JD).
 - Use **markdown bold** for metrics/skills.
 - Extract ALL contact info from the resume (name, phone, email, linkedin, github).
 - Return ONLY valid JSON.
+- Never use "N/A" or "None". If information is missing, use an empty string "".
 
 JSON Schema:
 {{
@@ -297,7 +350,7 @@ JSON Schema:
   "linkedin_display": "linkedin.com/in/username or empty string",
   "github": "GitHub URL or empty string",  
   "github_display": "github.com/username or empty string",
-  "education": [{{"school": "...", "degree": "...", "dates": "...", "location": "..."}}],
+  "education": [{{"school": "Institution Name (e.g., Amrita Vishwa Vidya Peetham)", "degree": "Degree name or credential (e.g., Computer Science and Engineering, or Higher Secondary Education)", "dates": "...", "location": "..."}}],
   "experience": [{{"company": "...", "role": "...", "dates": "...", "location": "...", "bullets": ["..."]}}],
   "projects": [{{"name": "...", "tech": "...", "dates": "...", "bullets": ["..."]}}],
   "skills": {{"languages": "...", "frameworks": "...", "tools": "...", "libraries": "..."}}
@@ -305,8 +358,7 @@ JSON Schema:
 
 IMPORTANT: 
 - "name" is REQUIRED - extract from top of resume
-- "skills.libraries" is REQUIRED - if not found, use "N/A"
-- All string fields should have values (use empty string "" if not found, never null)"""),
+- All string fields should have values (use empty string "" if not found, never null). Do not use strings like "N/A"."""),
             ("human", "RESUME:\n{resume}\n\nJD:\n{jd}")
         ])
         
@@ -341,17 +393,22 @@ IMPORTANT:
         "education": [],
         "experience": [],
         "projects": [],
-        "skills": {"languages": "N/A", "frameworks": "N/A", "tools": "N/A", "libraries": "N/A"}
+        "skills": {"languages": "", "frameworks": "", "tools": "", "libraries": ""}
     }
     
     for key, default_val in defaults.items():
         if key not in data or data[key] is None:
             data[key] = default_val
         elif key == "skills" and isinstance(data.get("skills"), dict):
-            # Ensure all skill sub-fields exist
+            # Ensure all skill sub-fields exist and drop "N/A" or "None"
             for sk in ["languages", "frameworks", "tools", "libraries"]:
-                if sk not in data["skills"] or data["skills"][sk] is None:
-                    data["skills"][sk] = "N/A"
+                val = data["skills"].get(sk)
+                if not val or str(val).lower() in ["n/a", "none", "null"]:
+                    data["skills"][sk] = ""
+            
+            # Remove empty strings from skills so the template only renders populated ones
+            cleaned_skills = {k: v for k, v in data["skills"].items() if v.strip() != ""}
+            data["skills"] = cleaned_skills
     
     print(f"✅ [Agent 4] Returning structured data with {len(data)} keys")
     return data

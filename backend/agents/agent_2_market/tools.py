@@ -314,6 +314,74 @@ def search_mantiks_jobs(
 
 
 # =============================================================================
+# HACKATHON URL VALIDATION HELPER
+# =============================================================================
+
+# URL path patterns that indicate non-hackathon pages
+_HACKATHON_URL_BLACKLIST = [
+    "/members/", "/users/", "/login", "/signup", "/about", "/blog/",
+    "/profile/", "/settings", "/contact", "/faq", "/terms", "/privacy",
+    "/careers", "/pricing", "/how-it-works", "/for-organizations",
+    "/help", "/docs/", "/changelog", "/showcase",
+    "/software/",   # Devpost project submissions (NOT hackathon listings)
+]
+
+# Title patterns that indicate non-hackathon pages
+_HACKATHON_TITLE_BLACKLIST = [
+    "login", "sign up", "sign in", "register an account", "create account",
+    "about us", "blog post", "meet the team", "our team", "member profile",
+    "how it works", "pricing", "for organizations", "faq",
+]
+
+def _is_valid_hackathon_result(url: str, title: str) -> bool:
+    """Returns True if the URL + title looks like an actual hackathon listing."""
+    url_lower = url.lower()
+    title_lower = title.lower()
+    
+    # Reject blacklisted URL paths
+    for pattern in _HACKATHON_URL_BLACKLIST:
+        if pattern in url_lower:
+            return False
+    
+    # Reject blacklisted titles
+    for pattern in _HACKATHON_TITLE_BLACKLIST:
+        if pattern in title_lower:
+            return False
+    
+    # Reject generic platform homepages (exact matches)
+    generic_pages = [
+        "https://mlh.io/", "https://mlh.io",
+        "https://devpost.com/", "https://devpost.com",
+        "https://devfolio.co/", "https://devfolio.co",
+        "https://www.hackerearth.com/", "https://hackerearth.com/",
+        "https://unstop.com/", "https://unstop.com",
+    ]
+    if url_lower.rstrip("/") + "/" in generic_pages or url_lower in generic_pages:
+        return False
+    
+    # Must have at least one hackathon-related keyword in title or URL
+    hackathon_keywords = [
+        "hackathon", "hack", "challenge", "competition", 
+        "sprint", "fest", "buildathon", "codeathon", "datathon",
+    ]
+    has_keyword = any(kw in title_lower or kw in url_lower for kw in hackathon_keywords)
+    
+    # Also accept if it's a known hackathon platform listing page
+    platform_listing_patterns = [
+        "/hackathon/", "/hackathons/",
+        "/challenge/", "/challenges/",
+        "/competition/", "/competitions/",
+        "unstop.com/hackathon", "unstop.com/competition",
+        "hackerearth.com/challenges/",
+        "mlh.io/seasons/", "mlh.io/events",
+        "devfolio.co/hackathons",
+    ]
+    is_listing = any(p in url_lower for p in platform_listing_patterns)
+    
+    return has_keyword or is_listing
+
+
+# =============================================================================
 # 4. TAVILY API - Hackathons & News Search
 # =============================================================================
 
@@ -323,13 +391,7 @@ def search_tavily_hackathons(
 ) -> list[dict[str, Any]]:
     """
     Search for hackathons using Tavily API.
-
-    Args:
-        query: Search query for hackathons
-        max_results: Maximum results to return
-
-    Returns:
-        List of normalized hackathon dictionaries
+    Filters out non-hackathon pages (blogs, profiles, etc.).
     """
     try:
         from tavily import TavilyClient
@@ -341,13 +403,13 @@ def search_tavily_hackathons(
 
         client = TavilyClient(api_key=api_key)
 
-        # Target hackathon platforms specifically - India focused
-        search_query = f"{query} hackathon India site:devpost.com OR site:devfolio.co OR site:gitcoin.co OR site:hackerearth.com OR site:mlh.io OR site:unstop.com"
+        # Improved query: target actual hackathon listing pages with date keywords
+        search_query = f"{query} hackathon 2025 2026 upcoming registration open site:devpost.com OR site:devfolio.co OR site:hackerearth.com OR site:mlh.io OR site:unstop.com"
 
         print(f"[Tavily Hackathons] Query: {query}")
         results = client.search(
             search_query,
-            max_results=max_results,
+            max_results=max_results + 5,  # Fetch extra to account for filtering
             search_depth="advanced"
         )
 
@@ -357,7 +419,11 @@ def search_tavily_hackathons(
             content = result.get("content", "")
             title = result.get("title", "")
 
-            # Extract bounty/prize amount
+            # Skip non-hackathon pages
+            if not _is_valid_hackathon_result(url, title):
+                print(f"  [Tavily] Skipped: {title[:60]}... ({url[:50]})")
+                continue
+
             bounty = _extract_bounty_from_text(content)
 
             hackathons.append({
@@ -372,7 +438,10 @@ def search_tavily_hackathons(
                 "bounty_amount": bounty,
             })
 
-        print(f"[Tavily Hackathons] Found {len(hackathons)} hackathons")
+            if len(hackathons) >= max_results:
+                break
+
+        print(f"[Tavily Hackathons] Found {len(hackathons)} valid hackathons")
         return hackathons
 
     except ImportError:
@@ -461,13 +530,7 @@ def search_serpapi_hackathons(
 ) -> list[dict[str, Any]]:
     """
     Search for hackathons using SerpAPI Google Search.
-
-    Args:
-        query: Search query for hackathons
-        num_results: Maximum results to return
-
-    Returns:
-        List of normalized hackathon dictionaries
+    Filters out non-hackathon pages (blogs, profiles, etc.).
     """
     api_key = os.getenv("SERPAPI_KEY")
     if not api_key:
@@ -476,13 +539,13 @@ def search_serpapi_hackathons(
 
     url = "https://serpapi.com/search.json"
 
-    # Target hackathon platforms - India focused
-    search_query = f"{query} hackathon India (site:devpost.com OR site:devfolio.co OR site:mlh.io OR site:unstop.com OR site:hackerearth.com)"
+    # Improved query: target actual hackathon listing pages
+    search_query = f"{query} hackathon 2025 2026 upcoming registration (site:devpost.com OR site:devfolio.co OR site:mlh.io OR site:unstop.com OR site:hackerearth.com)"
 
     params = {
         "engine": "google",
         "q": search_query,
-        "num": num_results,
+        "num": num_results + 5,  # Fetch extra to account for filtering
         "api_key": api_key
     }
 
@@ -492,28 +555,37 @@ def search_serpapi_hackathons(
         response.raise_for_status()
 
         data = response.json()
-        organic_results = data.get("organic_results", [])[:num_results]
+        organic_results = data.get("organic_results", [])
 
         hackathons = []
         for result in organic_results:
-            url = result.get("link", "")
+            result_url = result.get("link", "")
             snippet = result.get("snippet", "")
+            title = result.get("title", "")
+
+            # Skip non-hackathon pages
+            if not _is_valid_hackathon_result(result_url, title):
+                print(f"  [SerpAPI] Skipped: {title[:60]}... ({result_url[:50]})")
+                continue
 
             bounty = _extract_bounty_from_text(snippet)
 
             hackathons.append({
-                "title": result.get("title", ""),
-                "company": _extract_platform_from_url(url),
-                "link": url,
+                "title": title,
+                "company": _extract_platform_from_url(result_url),
+                "link": result_url,
                 "description": snippet,
                 "summary": _truncate_text(snippet, 500),
                 "type": "hackathon",
                 "source": "SerpAPI",
-                "platform": _extract_platform_from_url(url),
+                "platform": _extract_platform_from_url(result_url),
                 "bounty_amount": bounty,
             })
 
-        print(f"[SerpAPI Hackathons] Found {len(hackathons)} hackathons")
+            if len(hackathons) >= num_results:
+                break
+
+        print(f"[SerpAPI Hackathons] Found {len(hackathons)} valid hackathons")
         return hackathons
 
     except requests.exceptions.RequestException as e:

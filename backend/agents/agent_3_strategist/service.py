@@ -218,16 +218,16 @@ class StrategistService:
         self,
         supabase_ids: List[int],
         namespace: str
-    ) -> Dict[str, Optional[date]]:
+    ) -> Dict[str, dict]:
         """
-        Fetch posted_at/created_at timestamps in batch from Supabase.
+        Fetch posted_at/created_at timestamps (and hackathon-specific fields) in batch from Supabase.
 
         Args:
             supabase_ids: List of Supabase record IDs
             namespace: Pinecone namespace (maps to table name)
 
         Returns:
-            Dict mapping pinecone_id (str) -> posted_at (date)
+            Dict mapping pinecone_id (str) -> { 'posted_at': date|None, 'expiration_date': str|None, 'bounty_amount': str|None }
         """
         if not supabase_ids:
             return {}
@@ -243,10 +243,15 @@ class StrategistService:
         # Determine which date column to use
         date_column = "posted_at" if table_name in ["jobs", "hackathons"] else "published_at"
 
+        # For hackathons, also fetch expiration_date and bounty_amount
+        extra_columns = ""
+        if table_name == "hackathons":
+            extra_columns = ", expiration_date, bounty_amount"
+
         try:
             # Batch fetch timestamps
             response = self.supabase.table(table_name).select(
-                f"id, {date_column}, created_at"
+                f"id, {date_column}, created_at{extra_columns}"
             ).in_("id", supabase_ids).execute()
 
             # Build lookup dict
@@ -267,7 +272,14 @@ class StrategistService:
                     elif isinstance(date_value, datetime):
                         date_value = date_value.date()
 
-                timestamps[record_id] = date_value
+                entry = {"posted_at": date_value}
+
+                # Include extra hackathon fields
+                if table_name == "hackathons":
+                    entry["expiration_date"] = record.get("expiration_date")
+                    entry["bounty_amount"] = record.get("bounty_amount")
+
+                timestamps[record_id] = entry
 
             logger.debug(f"Fetched {len(timestamps)} timestamps from {table_name}")
             return timestamps
@@ -347,7 +359,8 @@ class StrategistService:
                 semantic_score = match.get("score", 0.0)
 
                 # Recency score from timestamp
-                posted_at = timestamps.get(supabase_id)
+                ts_entry = timestamps.get(supabase_id, {})
+                posted_at = ts_entry.get("posted_at") if isinstance(ts_entry, dict) else ts_entry
                 recency_score = self.calculate_recency_score(posted_at)
 
                 # Hybrid score using new weights (90% Semantic, 10% Recency)
@@ -375,6 +388,16 @@ class StrategistService:
                     "supabase_id": metadata.get("supabase_id"),
                     "posted_at": posted_at.isoformat() if posted_at else None,
                 }
+
+                # Add hackathon-specific fields if available
+                if isinstance(ts_entry, dict):
+                    if ts_entry.get("expiration_date"):
+                        match_dict["expiration_date"] = ts_entry["expiration_date"]
+                    if ts_entry.get("bounty_amount"):
+                        match_dict["bounty_amount"] = ts_entry["bounty_amount"]
+                # Also inherit bounty from Pinecone metadata if not in Supabase
+                if not match_dict.get("bounty_amount") and metadata.get("bounty_amount"):
+                    match_dict["bounty_amount"] = metadata.get("bounty_amount")
 
                 scored_matches.append(match_dict)
 

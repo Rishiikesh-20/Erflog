@@ -300,6 +300,7 @@ class MarketIntelligenceService:
         """
         Fetch hackathons from Tavily + SerpAPI.
         Target: 10-20 hackathons.
+        Includes hardcoded platform-specific fallback queries for quality.
         """
         print("[Market] Step 5: Collecting hackathons...")
         
@@ -325,6 +326,24 @@ class MarketIntelligenceService:
         except Exception as e:
             self.provider_errors["serpapi_hackathons"] = str(e)
             print(f"[Market] SerpAPI hackathons failed: {e}")
+        
+        # Hardcoded platform-specific fallback queries for guaranteed quality
+        if len(all_hackathons) < self.TARGET_HACKATHONS:
+            print(f"[Market] Only {len(all_hackathons)} hackathons, trying platform-specific fallback...")
+            fallback_queries = [
+                "upcoming hackathon 2026 devfolio",
+                "hackathon 2026 unstop competition registration",
+                "MLH hackathon 2026 season",
+                "hackerearth challenge 2026 coding",
+            ]
+            for fq in fallback_queries:
+                try:
+                    results = search_tavily_hackathons(fq, max_results=3)
+                    all_hackathons.extend(results)
+                    if len(all_hackathons) >= self.TARGET_HACKATHONS:
+                        break
+                except:
+                    pass
         
         print(f"[Market] Collected {len(all_hackathons)} hackathons")
         return all_hackathons[:20]  # Cap at 20
@@ -443,9 +462,18 @@ class MarketIntelligenceService:
         """
         Normalize items into HackathonSchema and deduplicate by link.
         Checks against existing hackathons in the hackathons table.
+        Filters out non-hackathon content (blogs, profiles, landing pages).
         """
         seen_links = set()
         normalized = []
+        
+        # Title patterns that indicate non-hackathon pages
+        bad_title_patterns = [
+            "login", "sign up", "sign in", "register an account", "create account",
+            "about us", "blog post", "meet the team", "our team", "member profile",
+            "how it works", "pricing", "for organizations", "faq", "terms of",
+            "privacy policy", "cookie policy", "help center",
+        ]
         
         # First, check existing links in hackathons table
         try:
@@ -458,6 +486,18 @@ class MarketIntelligenceService:
         for item in raw_items:
             link = item.get("link", "").strip()
             if not link or link in seen_links:
+                continue
+            
+            title = item.get("title", "").strip()
+            
+            # Skip items with non-hackathon titles
+            title_lower = title.lower()
+            if any(pattern in title_lower for pattern in bad_title_patterns):
+                print(f"  [Normalize] Skipped bad title: {title[:60]}")
+                continue
+            
+            # Skip items with empty or very short titles
+            if len(title) < 5:
                 continue
             
             seen_links.add(link)
@@ -479,7 +519,7 @@ class MarketIntelligenceService:
                 bounty = str(bounty)
             
             hackathon = HackathonSchema(
-                title=item.get("title", "Unknown"),
+                title=title or "Unknown",
                 company=item.get("company", "Unknown"),
                 location=item.get("location", ""),
                 link=link,
@@ -493,6 +533,7 @@ class MarketIntelligenceService:
             )
             normalized.append(hackathon)
         
+        print(f"  [Normalize] Accepted {len(normalized)} / {len(raw_items)} hackathon items")
         return normalized
     
     def _normalize_and_dedupe_news(

@@ -41,6 +41,12 @@ export default function Settings() {
   const [isCalculatingAts, setIsCalculatingAts] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Parsed resume result from last upload
+  const [parsedResume, setParsedResume] = useState<{
+    skills: string[];
+    experience_summary: string;
+  } | null>(null);
+
   // Fetch profile on mount
   useEffect(() => {
     const fetchProfile = async () => {
@@ -52,7 +58,7 @@ export default function Settings() {
         setName(data.profile.name || "");
         setGithubUrl(data.profile.github_url || "");
         setLinkedinUrl(data.profile.linkedin_url || "");
-        
+
         // If ATS score is null but user has a resume, calculate it on demand
         if (!data.profile.ats_score && data.profile.resume_url) {
           console.log("ATS score is null, calculating on demand...");
@@ -60,7 +66,9 @@ export default function Settings() {
           try {
             const atsResult = await api.calculateAtsOnDemand();
             if (atsResult.ats_score) {
-              setProfile(prev => prev ? { ...prev, ats_score: atsResult.ats_score } : null);
+              setProfile((prev) =>
+                prev ? { ...prev, ats_score: atsResult.ats_score } : null,
+              );
               console.log("ATS score calculated:", atsResult.ats_score);
             }
           } catch (atsErr) {
@@ -95,10 +103,11 @@ export default function Settings() {
 
     try {
       const updateData: api.ProfileUpdateRequest = {};
-      
+
       if (name !== profile?.name) updateData.name = name;
       if (githubUrl !== profile?.github_url) updateData.github_url = githubUrl;
-      if (linkedinUrl !== profile?.linkedin_url) updateData.linkedin_url = linkedinUrl;
+      if (linkedinUrl !== profile?.linkedin_url)
+        updateData.linkedin_url = linkedinUrl;
 
       if (Object.keys(updateData).length === 0) {
         setSuccessMessage("No changes to save");
@@ -108,20 +117,23 @@ export default function Settings() {
 
       const result = await api.updateProfile(updateData);
       setSuccessMessage(result.message);
-      
+
       // Refresh profile
       const data = await api.getSettingsProfile();
       setProfile(data.profile);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to update profile:", err);
-      setError(err.response?.data?.detail || "Failed to update profile");
+      const msg =
+        err instanceof Error ? err.message : "Failed to update profile";
+      setError(msg);
     } finally {
       setIsSavingProfile(false);
     }
   };
 
-  // Handle resume upload
-  const handleResumeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -133,17 +145,27 @@ export default function Settings() {
     setIsUploadingResume(true);
     setSuccessMessage(null);
     setError(null);
+    setParsedResume(null);
 
     try {
       const result = await api.updatePrimaryResume(file);
       setSuccessMessage(result.message);
-      
+
+      // Show extracted skills + summary if returned
+      const skills = result.profile?.skills ?? [];
+      const summary = result.profile?.experience_summary ?? "";
+      if (skills.length > 0 || summary) {
+        setParsedResume({ skills, experience_summary: summary });
+      }
+
       // Refresh profile
       const data = await api.getSettingsProfile();
       setProfile(data.profile);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to upload resume:", err);
-      setError(err.response?.data?.detail || "Failed to upload resume");
+      const message =
+        err instanceof Error ? err.message : "Failed to upload resume";
+      setError(message);
     } finally {
       setIsUploadingResume(false);
       // Reset file input
@@ -221,8 +243,12 @@ export default function Settings() {
                 <User className="w-5 h-5 text-[#D95D39]" />
               </div>
               <div>
-                <h2 className="font-semibold text-lg text-gray-900">Profile Information</h2>
-                <p className="text-sm text-gray-500">Update your basic information</p>
+                <h2 className="font-semibold text-lg text-gray-900">
+                  Profile Information
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Update your basic information
+                </p>
               </div>
             </div>
 
@@ -251,7 +277,9 @@ export default function Settings() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
                   placeholder="Email from authentication"
                 />
-                <p className="text-xs text-gray-400 mt-1">Email is managed by your authentication provider</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Email is managed by your authentication provider
+                </p>
               </div>
             </div>
           </motion.div>
@@ -268,8 +296,12 @@ export default function Settings() {
                 <Github className="w-5 h-5 text-purple-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-lg text-gray-900">Social Links</h2>
-                <p className="text-sm text-gray-500">Connect your professional profiles</p>
+                <h2 className="font-semibold text-lg text-gray-900">
+                  Social Links
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Connect your professional profiles
+                </p>
               </div>
             </div>
 
@@ -339,8 +371,12 @@ export default function Settings() {
                 <FileText className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-lg text-gray-900">Primary Resume</h2>
-                <p className="text-sm text-gray-500">Your main resume used for profile analysis</p>
+                <h2 className="font-semibold text-lg text-gray-900">
+                  Primary Resume
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Your main resume used for profile analysis
+                </p>
               </div>
             </div>
 
@@ -349,7 +385,9 @@ export default function Settings() {
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <FileText className="w-5 h-5 text-gray-600" />
-                    <span className="text-sm text-gray-700">Current resume uploaded</span>
+                    <span className="text-sm text-gray-700">
+                      Current resume uploaded
+                    </span>
                   </div>
                   <a
                     href={profile.resume_url}
@@ -360,8 +398,7 @@ export default function Settings() {
                     View <ExternalLink className="w-4 h-4" />
                   </a>
                 </div>
-                
-                
+
                 {/* ATS Score Badge */}
                 {isCalculatingAts ? (
                   <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
@@ -370,33 +407,39 @@ export default function Settings() {
                         <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-900">Calculating ATS Score...</p>
-                        <p className="text-xs text-gray-500">Analyzing your resume compatibility</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          Calculating ATS Score...
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Analyzing your resume compatibility
+                        </p>
                       </div>
                     </div>
                   </div>
                 ) : profile.ats_score ? (
                   <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
                     <div className="flex items-center gap-3">
-                      <div 
+                      <div
                         className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
-                          parseInt(profile.ats_score) >= 70 
-                            ? 'bg-green-500' 
-                            : parseInt(profile.ats_score) >= 40 
-                              ? 'bg-yellow-500' 
-                              : 'bg-red-500'
+                          parseInt(profile.ats_score) >= 70
+                            ? "bg-green-500"
+                            : parseInt(profile.ats_score) >= 40
+                              ? "bg-yellow-500"
+                              : "bg-red-500"
                         }`}
                       >
                         {profile.ats_score}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-900">ATS Compatibility Score</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          ATS Compatibility Score
+                        </p>
                         <p className="text-xs text-gray-500">
-                          {parseInt(profile.ats_score) >= 70 
-                            ? '✓ Great! Your resume is ATS-friendly' 
-                            : parseInt(profile.ats_score) >= 40 
-                              ? '⚠ Consider improving keywords' 
-                              : '✗ Needs optimization for ATS'}
+                          {parseInt(profile.ats_score) >= 70
+                            ? "✓ Great! Your resume is ATS-friendly"
+                            : parseInt(profile.ats_score) >= 40
+                              ? "⚠ Consider improving keywords"
+                              : "✗ Needs optimization for ATS"}
                         </p>
                       </div>
                     </div>
@@ -405,7 +448,9 @@ export default function Settings() {
               </div>
             ) : (
               <div className="p-4 bg-yellow-50 rounded-lg mb-4">
-                <p className="text-sm text-yellow-700">No resume uploaded yet</p>
+                <p className="text-sm text-yellow-700">
+                  No resume uploaded yet
+                </p>
               </div>
             )}
 
@@ -425,7 +470,7 @@ export default function Settings() {
               {isUploadingResume ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  Uploading...
+                  Parsing &amp; storing in Pinecone...
                 </>
               ) : (
                 <>
@@ -435,8 +480,54 @@ export default function Settings() {
               )}
             </button>
             <p className="text-xs text-gray-400 mt-2 text-center">
-              PDF files only. This will replace your existing resume.
+              PDF only · Skills and profile are extracted and stored
+              automatically
             </p>
+
+            {/* Parsed Resume Results Panel */}
+            {parsedResume && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 p-5 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <p className="font-semibold text-green-800 text-sm">
+                    Resume parsed &amp; stored in Supabase + Pinecone
+                  </p>
+                </div>
+
+                {parsedResume.skills.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
+                      Extracted Skills ({parsedResume.skills.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {parsedResume.skills.map((skill) => (
+                        <span
+                          key={skill}
+                          className="px-2.5 py-1 bg-white border border-green-200 text-green-800 text-xs rounded-full font-medium shadow-sm"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {parsedResume.experience_summary && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-1">
+                      Experience Summary
+                    </p>
+                    <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">
+                      {parsedResume.experience_summary}
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+            )}
           </motion.div>
 
           {/* Secondary/Tailored Resume Section */}
@@ -451,8 +542,12 @@ export default function Settings() {
                 <RefreshCw className="w-5 h-5 text-green-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-lg text-gray-900">Tailored Resume</h2>
-                <p className="text-sm text-gray-500">AI-generated resume for job applications</p>
+                <h2 className="font-semibold text-lg text-gray-900">
+                  Tailored Resume
+                </h2>
+                <p className="text-sm text-gray-500">
+                  AI-generated resume for job applications
+                </p>
               </div>
             </div>
 
@@ -460,7 +555,9 @@ export default function Settings() {
               <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <FileText className="w-5 h-5 text-green-600" />
-                  <span className="text-sm text-gray-700">Latest tailored resume available</span>
+                  <span className="text-sm text-gray-700">
+                    Latest tailored resume available
+                  </span>
                 </div>
                 <a
                   href={profile.sec_resume_url}
@@ -474,7 +571,8 @@ export default function Settings() {
             ) : (
               <div className="p-4 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-600">
-                  No tailored resume yet. Generate one by clicking "Deploy" on a job in the Strategy Board!
+                  No tailored resume yet. Generate one by clicking
+                  &ldquo;Deploy&rdquo; on a job in the Strategy Board!
                 </p>
               </div>
             )}
@@ -487,12 +585,14 @@ export default function Settings() {
             transition={{ delay: 0.5 }}
             className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm"
           >
-            <h2 className="font-semibold text-lg text-gray-900 mb-4">About Erflog</h2>
+            <h2 className="font-semibold text-lg text-gray-900 mb-4">
+              About Erflog
+            </h2>
             <p className="text-sm text-gray-600 leading-relaxed">
               Erflog is your personal career intelligence platform powered by
-              advanced AI agent swarms. Our system analyzes job opportunities and
-              creates personalized learning roadmaps to help you achieve your
-              career goals.
+              advanced AI agent swarms. Our system analyzes job opportunities
+              and creates personalized learning roadmaps to help you achieve
+              your career goals.
             </p>
           </motion.div>
         </div>

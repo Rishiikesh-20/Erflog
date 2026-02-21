@@ -33,7 +33,7 @@ api.interceptors.request.use(
       if (typeof window !== "undefined") {
         const keys = Object.keys(localStorage);
         const supabaseAuthKey = keys.find(
-          (key) => key.startsWith("sb-") && key.endsWith("-auth-token")
+          (key) => key.startsWith("sb-") && key.endsWith("-auth-token"),
         );
 
         if (supabaseAuthKey) {
@@ -55,7 +55,7 @@ api.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // ============================================================================
@@ -215,7 +215,6 @@ export interface SyncGithubResponse {
 // ============================================================================
 // Type Definitions
 // ============================================================================
-
 
 export interface ApiInfo {
   message: string;
@@ -386,6 +385,8 @@ export interface GenerateTailoredResumeResponse {
   optimized_resume: Record<string, unknown>;
   pdf_path: string;
   pdf_url: string;
+  ats_score_before?: number;
+  ats_score_after?: number;
   application_status: string;
   processing_time_ms: number;
   message: string;
@@ -437,7 +438,7 @@ export async function initSession(): Promise<InitResponse> {
 export async function uploadResume(
   file: File,
   sessionId: string,
-  githubUrl?: string
+  githubUrl?: string,
 ): Promise<UploadResumeResponse> {
   const formData = new FormData();
   formData.append("file", file);
@@ -446,14 +447,14 @@ export async function uploadResume(
   const response = await api.post<UploadResumeResponse>(
     "/api/upload-resume",
     formData,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
   return response.data;
 }
 
 export async function syncGithub(
   sessionId: string,
-  githubUrl: string
+  githubUrl: string,
 ): Promise<SyncGithubResponse> {
   const response = await api.post<SyncGithubResponse>("/api/sync-github", {
     session_id: sessionId,
@@ -464,35 +465,35 @@ export async function syncGithub(
 
 export async function checkWatchdog(
   sessionId: string,
-  lastKnownSha?: string
+  lastKnownSha?: string,
 ): Promise<WatchdogCheckResponse> {
   const response = await api.post<WatchdogCheckResponse>(
     "/api/watchdog/check",
-    { session_id: sessionId, last_known_sha: lastKnownSha }
+    { session_id: sessionId, last_known_sha: lastKnownSha },
   );
   return response.data;
 }
 
 export async function generateStrategy(
-  query: string
+  query: string,
 ): Promise<GenerateStrategyResponse> {
   const response = await api.post<GenerateStrategyResponse>(
     "/api/generate-strategy",
-    { query }
+    { query },
   );
   return response.data;
 }
 
 export async function generateApplication(
   sessionId: string,
-  jobDescription?: string
+  jobDescription?: string,
 ): Promise<GenerateApplicationResponse> {
   const response = await api.post<GenerateApplicationResponse>(
     "/api/generate-application",
     {
       session_id: sessionId,
       ...(jobDescription && { job_description: jobDescription }),
-    }
+    },
   );
   return response.data;
 }
@@ -505,7 +506,7 @@ export async function matchJobs(query: string): Promise<MatchResponse> {
 export async function interviewChat(
   sessionId: string,
   jobContext: string,
-  userMessage: string = ""
+  userMessage: string = "",
 ): Promise<InterviewResponse> {
   const response = await api.post<InterviewResponse>("/api/interview/chat", {
     session_id: sessionId,
@@ -521,7 +522,7 @@ export async function interviewChat(
  */
 export async function generateTailoredResume(
   jobDescription: string,
-  jobId?: string
+  jobId?: string,
 ): Promise<GenerateTailoredResumeResponse> {
   const response = await api.post("/agent4/generate-resume", {
     job_description: jobDescription,
@@ -537,7 +538,7 @@ export async function generateTailoredResume(
  */
 export async function autoApplyToJob(
   jobUrl: string,
-  userData: Record<string, string>
+  userData: Record<string, string>,
 ): Promise<AutoApplyResponse> {
   const response = await api.post<AutoApplyResponse>("/agent4/auto-apply", {
     job_url: jobUrl,
@@ -551,7 +552,7 @@ export async function generateKit(
   jobTitle: string,
   jobCompany: string,
   sessionId?: string,
-  jobDescription?: string
+  jobDescription?: string,
 ): Promise<GenerateKitResponse | Blob> {
   const response = await api.post("/api/generate-kit", {
     user_name: userName,
@@ -565,7 +566,7 @@ export async function generateKit(
 
 export async function analyze(
   userInput: string,
-  context: Record<string, unknown> = {}
+  context: Record<string, unknown> = {},
 ): Promise<{ status: string; message: string; data: Record<string, unknown> }> {
   const response = await api.post("/analyze", {
     user_input: userInput,
@@ -606,7 +607,7 @@ export async function getCurrentUser(): Promise<AuthUser> {
  */
 export async function apiFetch<T = unknown>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const {
     data: { session },
@@ -637,7 +638,7 @@ export async function apiFetch<T = unknown>(
  */
 export async function getOnboardingStatus(): Promise<OnboardingStatusResponse> {
   const response = await api.get<OnboardingStatusResponse>(
-    "/api/perception/onboarding/status"
+    "/api/perception/onboarding/status",
   );
   return response.data;
 }
@@ -646,7 +647,7 @@ export async function getOnboardingStatus(): Promise<OnboardingStatusResponse> {
  * Upload resume via perception API
  */
 export async function uploadResumePerception(
-  file: File
+  file: File,
 ): Promise<ResumeUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
@@ -656,7 +657,7 @@ export async function uploadResumePerception(
     formData,
     {
       headers: { "Content-Type": "multipart/form-data" },
-    }
+    },
   );
   return response.data;
 }
@@ -665,7 +666,7 @@ export async function uploadResumePerception(
  * Complete onboarding with profile data
  */
 export async function completeOnboarding(
-  data: OnboardingCompleteRequest
+  data: OnboardingCompleteRequest,
 ): Promise<{ status: string; message: string; next_step: string }> {
   const response = await api.post("/api/perception/onboarding/complete", data);
   return response.data;
@@ -676,14 +677,14 @@ export async function completeOnboarding(
  */
 export async function generateOnboardingQuiz(
   skills?: string[],
-  targetRoles?: string[]
+  targetRoles?: string[],
 ): Promise<OnboardingQuizResponse> {
   const response = await api.post<OnboardingQuizResponse>(
     "/api/perception/onboarding/quiz/generate",
     {
       skills,
       target_roles: targetRoles,
-    }
+    },
   );
   return response.data;
 }
@@ -692,14 +693,13 @@ export async function generateOnboardingQuiz(
  * Submit onboarding quiz answers
  */
 export async function submitOnboardingQuiz(
-  answers: QuizAnswer[]
+  answers: QuizAnswer[],
 ): Promise<QuizSubmitResponse & { trigger_cold_start?: boolean }> {
-  const response = await api.post<QuizSubmitResponse & { trigger_cold_start?: boolean }>(
-    "/api/perception/onboarding/quiz/submit",
-    {
-      answers,
-    }
-  );
+  const response = await api.post<
+    QuizSubmitResponse & { trigger_cold_start?: boolean }
+  >("/api/perception/onboarding/quiz/submit", {
+    answers,
+  });
   return response.data;
 }
 
@@ -722,7 +722,7 @@ export async function triggerColdStart(): Promise<{
  */
 export async function getDashboardInsights(): Promise<DashboardInsightsResponse> {
   const response = await api.get<DashboardInsightsResponse>(
-    "/api/perception/dashboard"
+    "/api/perception/dashboard",
   );
   return response.data;
 }
@@ -732,7 +732,7 @@ export async function getDashboardInsights(): Promise<DashboardInsightsResponse>
  */
 export async function syncGitHubPerception(): Promise<SyncGithubResponse> {
   const response = await api.post<SyncGithubResponse>(
-    "/api/perception/sync-github"
+    "/api/perception/sync-github",
   );
   return response.data;
 }
@@ -750,7 +750,7 @@ export async function getUserProfile(): Promise<{
 
 export const checkWatchdogStatus = async (
   sessionId: string,
-  lastSha?: string
+  lastSha?: string,
 ) => {
   // Assuming 'api' is the name of your exported axios instance in this file
   const response = await api.get("/api/perception/watchdog/check", {
@@ -808,7 +808,7 @@ export interface ApplicationText {
 
 export interface TodayDataItem {
   id: string;
-  score: number;          // Hybrid score (semantic + recency) — used for sorting only
+  score: number; // Hybrid score (semantic + recency) — used for sorting only
   match_percentage?: number; // Normalized semantic match 0-1 (shown to user as %)
   title: string;
   company: string;
@@ -819,6 +819,10 @@ export interface TodayDataItem {
   location: string;
   type: string;
   supabase_id?: number;
+  // Date + hackathon-specific fields
+  posted_at?: string | null;
+  expiration_date?: string | null;
+  bounty_amount?: string | null;
   // New fields from orchestrator
   roadmap?: RoadmapData | null;
   application_text?: ApplicationText | null;
@@ -889,7 +893,7 @@ export async function getTodayJobs(): Promise<TodayJobsResponse> {
  */
 export async function getTodayHackathons(): Promise<TodayHackathonsResponse> {
   const response = await api.get<TodayHackathonsResponse>(
-    "/api/strategist/hackathons"
+    "/api/strategist/hackathons",
   );
   return response.data;
 }
@@ -899,7 +903,7 @@ export async function getTodayHackathons(): Promise<TodayHackathonsResponse> {
  */
 export async function getStrategistDashboard(): Promise<StrategistDashboardResponse> {
   const response = await api.get<StrategistDashboardResponse>(
-    "/api/strategist/dashboard"
+    "/api/strategist/dashboard",
   );
   return response.data;
 }
@@ -928,7 +932,7 @@ export interface SettingsProfile {
   linkedin_url: string | null;
   resume_url: string | null;
   sec_resume_url: string | null;
-  ats_score: string | null;  // ATS compatibility score (0-100)
+  ats_score: string | null; // ATS compatibility score (0-100)
   skills: string[];
   target_roles: string[];
   onboarding_completed: boolean;
@@ -959,7 +963,7 @@ export interface ProfileUpdateResponse {
  */
 export async function getSettingsProfile(): Promise<SettingsProfileResponse> {
   const response = await api.get<SettingsProfileResponse>(
-    "/api/perception/settings/profile"
+    "/api/perception/settings/profile",
   );
   return response.data;
 }
@@ -968,11 +972,11 @@ export async function getSettingsProfile(): Promise<SettingsProfileResponse> {
  * Update profile fields (name, github_url, linkedin_url)
  */
 export async function updateProfile(
-  data: ProfileUpdateRequest
+  data: ProfileUpdateRequest,
 ): Promise<ProfileUpdateResponse> {
   const response = await api.patch<ProfileUpdateResponse>(
     "/api/perception/settings/profile",
-    data
+    data,
   );
   return response.data;
 }
@@ -984,6 +988,12 @@ export async function updatePrimaryResume(file: File): Promise<{
   status: string;
   message: string;
   resume_url: string;
+  profile?: {
+    skills?: string[];
+    experience_summary?: string;
+    name?: string;
+    email?: string;
+  };
 }> {
   const formData = new FormData();
   formData.append("file", file);
@@ -1060,7 +1070,9 @@ export interface LeetCodeProgressResponse {
  * Get all Blind 75 problems organized by category
  */
 export async function getLeetCodeProblems(): Promise<LeetCodeProblemsResponse> {
-  const response = await api.get<LeetCodeProblemsResponse>("/api/leetcode/problems");
+  const response = await api.get<LeetCodeProblemsResponse>(
+    "/api/leetcode/problems",
+  );
   return response.data;
 }
 
@@ -1145,7 +1157,7 @@ export interface GlobalRoadmap {
         priority: string;
         appears_in_jobs?: string[];
         estimated_weeks?: number;
-        resources?: string[] | Array<{name: string; url: string}>;
+        resources?: string[] | Array<{ name: string; url: string }>;
       }>;
     }>;
     learning_path?: Array<{
@@ -1158,7 +1170,7 @@ export interface GlobalRoadmap {
     combined_missing_skills?: string[];
     all_resources?: Array<{
       skill: string;
-      resources: Array<{name: string; url: string} | string>;
+      resources: Array<{ name: string; url: string } | string>;
     }>;
     source_jobs?: Array<{
       title: string;
@@ -1182,11 +1194,11 @@ export async function saveJob(job: SaveJobRequest): Promise<SavedJob> {
  * Get AI-powered problem recommendations
  */
 export async function getLeetCodeRecommendations(
-  request: LeetCodeRecommendRequest
+  request: LeetCodeRecommendRequest,
 ): Promise<LeetCodeRecommendResponse> {
   const response = await api.post<LeetCodeRecommendResponse>(
     "/api/leetcode/recommend",
-    request
+    request,
   );
   return response.data;
 }
@@ -1203,14 +1215,18 @@ export async function getSavedJobs(userId: string): Promise<SavedJob[]> {
  * Get user's LeetCode progress
  */
 export async function getLeetCodeProgress(): Promise<LeetCodeProgressResponse> {
-  const response = await api.get<LeetCodeProgressResponse>("/api/leetcode/progress");
+  const response = await api.get<LeetCodeProgressResponse>(
+    "/api/leetcode/progress",
+  );
   return response.data;
 }
 
 /**
  * Remove a job from saved jobs
  */
-export async function removeSavedJob(jobId: string): Promise<{ status: string; message: string }> {
+export async function removeSavedJob(
+  jobId: string,
+): Promise<{ status: string; message: string }> {
   const response = await api.delete(`/api/saved-jobs/remove/${jobId}`);
   return response.data;
 }
@@ -1220,55 +1236,81 @@ export async function removeSavedJob(jobId: string): Promise<{ status: string; m
  */
 export async function saveLeetCodeProgress(
   solvedProblemIds: number[],
-  quizAnswers?: Record<string, string>
+  quizAnswers?: Record<string, string>,
 ): Promise<LeetCodeProgressResponse> {
-  const response = await api.post<LeetCodeProgressResponse>("/api/leetcode/progress", {
-    solved_problem_ids: solvedProblemIds,
-    quiz_answers: quizAnswers,
-  });
+  const response = await api.post<LeetCodeProgressResponse>(
+    "/api/leetcode/progress",
+    {
+      solved_problem_ids: solvedProblemIds,
+      quiz_answers: quizAnswers,
+    },
+  );
   return response.data;
 }
 
 /**
  * Check if a job is already saved
  */
-export async function checkJobSaved(userId: string, originalJobId: string): Promise<{ is_saved: boolean; saved_job_id: string | null }> {
-  const response = await api.get(`/api/saved-jobs/check/${userId}/${originalJobId}`);
+export async function checkJobSaved(
+  userId: string,
+  originalJobId: string,
+): Promise<{ is_saved: boolean; saved_job_id: string | null }> {
+  const response = await api.get(
+    `/api/saved-jobs/check/${userId}/${originalJobId}`,
+  );
   return response.data;
 }
 
 /**
  * Merge roadmaps from multiple saved jobs
  */
-export async function mergeRoadmaps(jobIds: string[], name?: string): Promise<GlobalRoadmap> {
-  const response = await api.post<GlobalRoadmap>("/api/saved-jobs/merge-roadmaps", {
-    job_ids: jobIds,
-    name: name || "My Master Plan"
-  });
+export async function mergeRoadmaps(
+  jobIds: string[],
+  name?: string,
+): Promise<GlobalRoadmap> {
+  const response = await api.post<GlobalRoadmap>(
+    "/api/saved-jobs/merge-roadmaps",
+    {
+      job_ids: jobIds,
+      name: name || "My Master Plan",
+    },
+  );
   return response.data;
 }
 
 /**
  * Get all global (merged) roadmaps for a user
  */
-export async function getGlobalRoadmaps(userId: string): Promise<GlobalRoadmap[]> {
-  const response = await api.get<GlobalRoadmap[]>(`/api/saved-jobs/global-roadmaps/${userId}`);
+export async function getGlobalRoadmaps(
+  userId: string,
+): Promise<GlobalRoadmap[]> {
+  const response = await api.get<GlobalRoadmap[]>(
+    `/api/saved-jobs/global-roadmaps/${userId}`,
+  );
   return response.data;
 }
 
 /**
  * Get a specific global roadmap
  */
-export async function getGlobalRoadmap(roadmapId: string): Promise<GlobalRoadmap> {
-  const response = await api.get<GlobalRoadmap>(`/api/saved-jobs/global-roadmap/${roadmapId}`);
+export async function getGlobalRoadmap(
+  roadmapId: string,
+): Promise<GlobalRoadmap> {
+  const response = await api.get<GlobalRoadmap>(
+    `/api/saved-jobs/global-roadmap/${roadmapId}`,
+  );
   return response.data;
 }
 
 /**
  * Delete a global roadmap
  */
-export async function deleteGlobalRoadmap(roadmapId: string): Promise<{ status: string; message: string }> {
-  const response = await api.delete(`/api/saved-jobs/global-roadmap/${roadmapId}`);
+export async function deleteGlobalRoadmap(
+  roadmapId: string,
+): Promise<{ status: string; message: string }> {
+  const response = await api.delete(
+    `/api/saved-jobs/global-roadmap/${roadmapId}`,
+  );
   return response.data;
 }
 
@@ -1291,10 +1333,14 @@ export interface ProgressResponse {
 /**
  * Update progress on a roadmap node
  */
-export async function updateProgress(jobId: string, nodeId: string, completed: boolean): Promise<{ status: string; progress: object; message: string }> {
+export async function updateProgress(
+  jobId: string,
+  nodeId: string,
+  completed: boolean,
+): Promise<{ status: string; progress: object; message: string }> {
   const response = await api.put(`/api/saved-jobs/progress/${jobId}`, {
     node_id: nodeId,
-    completed
+    completed,
   });
   return response.data;
 }
@@ -1303,7 +1349,9 @@ export async function updateProgress(jobId: string, nodeId: string, completed: b
  * Get progress for a saved job
  */
 export async function getProgress(jobId: string): Promise<ProgressResponse> {
-  const response = await api.get<ProgressResponse>(`/api/saved-jobs/progress/${jobId}`);
+  const response = await api.get<ProgressResponse>(
+    `/api/saved-jobs/progress/${jobId}`,
+  );
   return response.data;
 }
 
@@ -1322,17 +1370,26 @@ export interface CompleteRoadmapResponse {
  * Called when user completes 100% of a roadmap.
  * Analyzes the roadmap and adds learned skills to user's profile.
  */
-export async function completeRoadmap(userId: string, savedJobId: string): Promise<CompleteRoadmapResponse> {
-  console.log('[API] completeRoadmap called with:', { userId, savedJobId });
+export async function completeRoadmap(
+  userId: string,
+  savedJobId: string,
+): Promise<CompleteRoadmapResponse> {
+  console.log("[API] completeRoadmap called with:", { userId, savedJobId });
   try {
-    const response = await api.post<CompleteRoadmapResponse>('/api/saved-jobs/complete-roadmap', {
-      user_id: userId,
-      saved_job_id: savedJobId
-    });
-    console.log('[API] completeRoadmap response:', response.data);
+    const response = await api.post<CompleteRoadmapResponse>(
+      "/api/saved-jobs/complete-roadmap",
+      {
+        user_id: userId,
+        saved_job_id: savedJobId,
+      },
+    );
+    console.log("[API] completeRoadmap response:", response.data);
     return response.data;
   } catch (error: any) {
-    console.error('[API] completeRoadmap error:', error?.response?.data || error?.message || error);
+    console.error(
+      "[API] completeRoadmap error:",
+      error?.response?.data || error?.message || error,
+    );
     throw error;
   }
 }
@@ -1354,12 +1411,14 @@ export interface RecruiterEmail {
 
 export interface FindRecruiterEmailResponse {
   success: boolean;
-  company: string;
-  domain: string;
-  emails: RecruiterEmail[];
-  total_found: number;
-  recruiter_count: number;
-  email_template: string;
+  company?: string;
+  domain?: string;
+  emails?: RecruiterEmail[];
+  total_found?: number;
+  recruiter_count?: number;
+  email_template?: string;
+  message?: string;
+  error?: string;
 }
 
 /**
@@ -1373,13 +1432,16 @@ export interface FindRecruiterEmailResponse {
 export async function findRecruiterEmail(
   company: string,
   jobId: string,
-  jobTitle: string
+  jobTitle: string,
 ): Promise<FindRecruiterEmailResponse> {
-  const response = await api.post<FindRecruiterEmailResponse>('/api/strategist/find-recruiter', {
-    company,
-    job_id: jobId,
-    job_title: jobTitle
-  });
+  const response = await api.post<FindRecruiterEmailResponse>(
+    "/api/strategist/find-recruiter",
+    {
+      company,
+      job_id: jobId,
+      job_title: jobTitle,
+    },
+  );
   return response.data;
 }
 

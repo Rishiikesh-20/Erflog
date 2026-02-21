@@ -984,6 +984,7 @@ class PerceptionService:
         """
         Generate 5 MCQ questions based on user's skills and target roles.
         Uses Gemini to create relevant technical questions.
+        Falls back to hardcoded questions if Gemini fails.
         """
         # Get profile for context
         response = self.supabase.table("profiles").select(
@@ -995,20 +996,73 @@ class PerceptionService:
             skills = skills or profile.get("skills", [])
             target_roles = target_roles or profile.get("target_roles", [])
         
-        if not skills and not target_roles:
-            raise HTTPException(
-                status_code=400,
-                detail="No skills or target roles found. Please complete profile setup first."
-            )
+        # Fallback questions for when Gemini is unavailable
+        fallback_questions = [
+            {
+                "id": "q1",
+                "question": "What does API stand for?",
+                "options": [
+                    "Application Programming Interface",
+                    "Advanced Program Integration",
+                    "Automated Protocol Interface",
+                    "Application Process Integration"
+                ],
+                "correct_index": 0,
+                "skill_being_tested": "General Programming"
+            },
+            {
+                "id": "q2",
+                "question": "Which data structure uses FIFO (First In, First Out) ordering?",
+                "options": ["Stack", "Queue", "Tree", "Graph"],
+                "correct_index": 1,
+                "skill_being_tested": "Data Structures"
+            },
+            {
+                "id": "q3",
+                "question": "What is the time complexity of binary search?",
+                "options": ["O(n)", "O(n²)", "O(log n)", "O(1)"],
+                "correct_index": 2,
+                "skill_being_tested": "Algorithms"
+            },
+            {
+                "id": "q4",
+                "question": "Which HTTP method is typically used to update an existing resource?",
+                "options": ["GET", "POST", "PUT", "DELETE"],
+                "correct_index": 2,
+                "skill_being_tested": "Web Development"
+            },
+            {
+                "id": "q5",
+                "question": "What does 'git merge' do?",
+                "options": [
+                    "Deletes a branch",
+                    "Creates a new repository",
+                    "Combines changes from two branches",
+                    "Reverts the last commit"
+                ],
+                "correct_index": 2,
+                "skill_being_tested": "Version Control"
+            }
+        ]
         
-        # Generate questions using Gemini
-        questions = generate_onboarding_questions(skills, target_roles)
+        if not skills and not target_roles:
+            # No skills/roles available — use fallback questions directly
+            print("[Onboarding Quiz] No skills or target roles found, using fallback questions")
+            return {
+                "status": "success",
+                "questions": fallback_questions
+            }
+        
+        # Try to generate questions using Gemini
+        try:
+            questions = generate_onboarding_questions(skills, target_roles)
+        except Exception as e:
+            print(f"[Onboarding Quiz] Gemini generation error: {e}")
+            questions = None
         
         if not questions or len(questions) < 5:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to generate quiz questions. Please try again."
-            )
+            print("[Onboarding Quiz] Gemini failed or returned insufficient questions, using fallback")
+            questions = fallback_questions
         
         return {
             "status": "success",

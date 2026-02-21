@@ -179,6 +179,8 @@ class Agent4Service:
             "optimized_resume": {},  # Could include structured data if needed
             "pdf_path": result.get("pdf_path", ""),
             "pdf_url": result.get("pdf_url", ""),
+            "ats_score_before": result.get("ats_score_before", 0),
+            "ats_score_after": result.get("ats_score_after", 0),
             "recruiter_email": None,
             "application_status": "ready",
             "processing_time_ms": processing_time_ms,

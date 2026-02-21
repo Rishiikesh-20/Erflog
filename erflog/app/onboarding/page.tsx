@@ -44,8 +44,8 @@ function StepIndicator({
             i + 1 === currentStep
               ? "w-8 bg-[#D95D39]"
               : i + 1 < currentStep
-              ? "w-2 bg-green-500"
-              : "w-2 bg-gray-300"
+                ? "w-2 bg-green-500"
+                : "w-2 bg-gray-300"
           }`}
         />
       ))}
@@ -291,6 +291,7 @@ export default function OnboardingPage() {
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [quizGenerationFailed, setQuizGenerationFailed] = useState(false);
   const [quizResult, setQuizResult] = useState<{
     score: number;
     correct: number;
@@ -396,7 +397,7 @@ export default function OnboardingPage() {
               degree: e.degree,
               course: "",
               year: "",
-            }))
+            })),
           );
         }
         if (response.data.experience_summary) {
@@ -471,14 +472,19 @@ export default function OnboardingPage() {
   const generateQuiz = async () => {
     setIsGeneratingQuiz(true);
     setError(null);
+    setQuizGenerationFailed(false);
 
     try {
       const response = await api.generateOnboardingQuiz(skills, targetRoles);
-      if (response.questions) {
+      if (response.questions && response.questions.length > 0) {
         setQuizQuestions(response.questions);
+      } else {
+        setQuizGenerationFailed(true);
+        setError("No quiz questions were returned. Please retry.");
       }
     } catch (err) {
-      setError("Failed to generate quiz. Please try again.");
+      setQuizGenerationFailed(true);
+      setError("Failed to generate quiz. Please retry or skip.");
       console.error(err);
     } finally {
       setIsGeneratingQuiz(false);
@@ -956,7 +962,8 @@ export default function OnboardingPage() {
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#D95D39]/20 focus:border-[#D95D39]"
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    Connect to track your DSA progress and get personalized recommendations.
+                    Connect to track your DSA progress and get personalized
+                    recommendations.
                   </p>
                 </div>
 
@@ -1105,8 +1112,8 @@ export default function OnboardingPage() {
                       animate={{ opacity: 1 }}
                       className="mb-6 p-3 bg-yellow-50 rounded-xl border border-yellow-200 text-sm text-yellow-700"
                     >
-                      We&apos;re still setting up your data. Your dashboard will be
-                      fully personalized shortly!
+                      We&apos;re still setting up your data. Your dashboard will
+                      be fully personalized shortly!
                     </motion.div>
                   )}
 
@@ -1130,50 +1137,82 @@ export default function OnboardingPage() {
                 </div>
               ) : (
                 <>
-                  <div className="space-y-4 mb-6">
-                    {quizQuestions.map((q, idx) => (
-                      <QuizCard
-                        key={q.id}
-                        question={q}
-                        selectedIndex={quizAnswers[q.id] ?? null}
-                        onSelect={(index) =>
-                          setQuizAnswers({ ...quizAnswers, [q.id]: index })
-                        }
-                        questionNumber={idx + 1}
-                        showResult={false}
-                      />
-                    ))}
-                  </div>
+                  {quizQuestions.length === 0 && !isGeneratingQuiz ? (
+                    <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm text-center">
+                      <Brain className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {quizGenerationFailed
+                          ? "Quiz generation failed"
+                          : "No questions loaded"}
+                      </h3>
+                      <p className="text-gray-500 mb-6">
+                        {quizGenerationFailed
+                          ? "We couldn't generate personalized questions. You can retry or skip the quiz."
+                          : "Loading your personalized questions…"}
+                      </p>
+                      <div className="flex justify-center gap-3">
+                        <button
+                          onClick={generateQuiz}
+                          disabled={isGeneratingQuiz}
+                          className="flex items-center gap-2 px-6 py-3 bg-[#D95D39] text-white rounded-xl hover:bg-[#c54d2d] transition-colors disabled:opacity-50"
+                        >
+                          <Zap className="w-4 h-4" />
+                          Retry Quiz
+                        </button>
+                        <button
+                          onClick={submitQuiz}
+                          disabled={isSaving}
+                          className="flex items-center gap-2 px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        >
+                          Skip Quiz
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-4 mb-6">
+                        {quizQuestions.map((q, idx) => (
+                          <QuizCard
+                            key={q.id}
+                            question={q}
+                            selectedIndex={quizAnswers[q.id] ?? null}
+                            onSelect={(index) =>
+                              setQuizAnswers({ ...quizAnswers, [q.id]: index })
+                            }
+                            questionNumber={idx + 1}
+                            showResult={false}
+                          />
+                        ))}
+                      </div>
 
-                  <div className="flex justify-between">
-                    <button
-                      onClick={prevStep}
-                      className="flex items-center gap-2 px-6 py-3 text-gray-600 hover:text-gray-900 transition-colors"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      Back
-                    </button>
-                    <button
-                      onClick={submitQuiz}
-                      disabled={
-                        isSaving ||
-                        Object.keys(quizAnswers).length < quizQuestions.length
-                      }
-                      className="flex items-center gap-2 px-8 py-3 bg-[#D95D39] text-white rounded-xl hover:bg-[#c54d2d] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Submitting...
-                        </>
-                      ) : (
-                        <>
-                          Submit Quiz
-                          <CheckCircle2 className="w-4 h-4" />
-                        </>
-                      )}
-                    </button>
-                  </div>
+                      <div className="flex justify-between">
+                        <button
+                          onClick={prevStep}
+                          className="flex items-center gap-2 px-6 py-3 text-gray-600 hover:text-gray-900 transition-colors"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                          Back
+                        </button>
+                        <button
+                          onClick={submitQuiz}
+                          disabled={isSaving}
+                          className="flex items-center gap-2 px-8 py-3 bg-[#D95D39] text-white rounded-xl hover:bg-[#c54d2d] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSaving ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Submitting...
+                            </>
+                          ) : (
+                            <>
+                              Submit Quiz
+                              <CheckCircle2 className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </motion.div>

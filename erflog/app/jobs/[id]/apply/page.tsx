@@ -3,7 +3,14 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useSession } from "@/lib/SessionContext";
-import { getTodayJobs, generateTailoredResume, autoApplyToJob, getSettingsProfile, TodayDataItem } from "@/lib/api";
+import {
+  getTodayJobs,
+  generateTailoredResume,
+  autoApplyToJob,
+  getSettingsProfile,
+  findRecruiterEmail,
+  TodayDataItem,
+} from "@/lib/api";
 import {
   Loader2,
   Download,
@@ -17,6 +24,8 @@ import {
   Bot,
   CheckCircle,
   XCircle,
+  Mail,
+  User,
 } from "lucide-react";
 
 export default function ApplyPage() {
@@ -34,6 +43,10 @@ export default function ApplyPage() {
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [isGeneratingResume, setIsGeneratingResume] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [atsScores, setAtsScores] = useState<{
+    before: number;
+    after: number;
+  } | null>(null);
 
   // State for copied indicators
   const [copied, setCopied] = useState<string | null>(null);
@@ -54,6 +67,12 @@ export default function ApplyPage() {
     coverLetterBody: "",
     coverLetterClosing: "",
   });
+
+  // State for finding recruiters
+  const [isFindingRecruiter, setIsFindingRecruiter] = useState(false);
+  const [recruiterEmails, setRecruiterEmails] = useState<any[]>([]);
+  const [emailTemplate, setEmailTemplate] = useState<string | null>(null);
+  const [recruiterError, setRecruiterError] = useState<string | null>(null);
 
   // Fetch job data with pre-generated application text and resume
   useEffect(() => {
@@ -89,7 +108,7 @@ export default function ApplyPage() {
             }
           } else {
             setError(
-              "Job not found. It may have been removed from today's matches."
+              "Job not found. It may have been removed from today's matches.",
             );
           }
         } else {
@@ -114,6 +133,51 @@ export default function ApplyPage() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleFindRecruiter = async () => {
+    if (!job || !job.company) return;
+
+    setIsFindingRecruiter(true);
+    setRecruiterError(null);
+
+    try {
+      const result = await findRecruiterEmail(
+        job.company,
+        job.id.toString(),
+        job.title || "",
+      );
+
+      if (result.success) {
+        setRecruiterEmails(result.emails || []);
+        setEmailTemplate(result.email_template || null);
+
+        if (result.emails?.length === 0 && !result.email_template) {
+          setRecruiterError(
+            `No direct recruiters found. Try searching for "${job.company} Recruiter" on LinkedIn or their Career site.`,
+          );
+        }
+      } else {
+        setRecruiterError(
+          result.message ||
+            `No direct recruiters found. Try searching for "${job.company} Recruiter" on LinkedIn or their Career site.`,
+        );
+      }
+    } catch (err: unknown) {
+      console.error("Find recruiter error:", err);
+      type ApiError = {
+        response?: { data?: { detail?: string } };
+        message?: string;
+      };
+      const apiErr = err as ApiError;
+      const apiError =
+        apiErr.response?.data?.detail || apiErr.message || "Unknown error";
+      setRecruiterError(
+        `Failed to fetch contacts (${apiError}). Try searching for "${job.company} Recruiter" on LinkedIn.`,
+      );
+    } finally {
+      setIsFindingRecruiter(false);
+    }
   };
 
   const handleDownloadResume = () => {
@@ -145,15 +209,24 @@ Location: ${job.location || ""}
 
       if (result.success && result.pdf_url) {
         setResumeUrl(result.pdf_url);
+        if (
+          result.ats_score_before !== undefined &&
+          result.ats_score_after !== undefined
+        ) {
+          setAtsScores({
+            before: result.ats_score_before,
+            after: result.ats_score_after,
+          });
+        }
       } else {
         setResumeError(
-          result.message || "Failed to generate resume. Please try again."
+          result.message || "Failed to generate resume. Please try again.",
         );
       }
     } catch (err) {
       console.error("Resume generation error:", err);
       setResumeError(
-        "Failed to generate resume. Please ensure you have uploaded your resume on the home page."
+        "Failed to generate resume. Please ensure you have uploaded your resume on the home page.",
       );
     } finally {
       setIsGeneratingResume(false);
@@ -192,7 +265,8 @@ Location: ${job.location || ""}
       console.error("Auto-apply error:", err);
       setAutoApplyResult({
         success: false,
-        message: "Failed to start auto-apply. Please try again or apply manually.",
+        message:
+          "Failed to start auto-apply. Please try again or apply manually.",
       });
     } finally {
       setIsAutoApplying(false);
@@ -282,7 +356,12 @@ Location: ${job.location || ""}
             Match Score:{" "}
             <span
               className="font-medium"
-              style={{ color: (job.match_percentage ?? job.score) >= 0.8 ? "#22c55e" : "#D95D39" }}
+              style={{
+                color:
+                  (job.match_percentage ?? job.score) >= 0.8
+                    ? "#22c55e"
+                    : "#D95D39",
+              }}
             >
               {((job.match_percentage ?? job.score) * 100).toFixed(0)}%
             </span>
@@ -327,36 +406,87 @@ Location: ${job.location || ""}
               )}
 
               {resumeUrl ? (
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={handleDownloadResume}
-                    className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
-                    style={{ backgroundColor: "#22c55e" }}
-                  >
-                    <Download className="w-5 h-5" />
-                    Download Tailored Resume
-                  </button>
-                  <a
-                    href={resumeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50"
-                    style={{ borderColor: "#E5E0D8" }}
-                  >
-                    <ExternalLink className="w-5 h-5" />
-                    Open in New Tab
-                  </a>
-                  <button
-                    onClick={() => {
-                      setResumeUrl(null);
-                      setResumeError(null);
-                    }}
-                    className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50 text-secondary"
-                    style={{ borderColor: "#E5E0D8" }}
-                  >
-                    <Wand2 className="w-5 h-5" />
-                    Regenerate
-                  </button>
+                <div className="flex flex-col gap-6">
+                  {atsScores && (
+                    <div
+                      className="p-4 rounded-xl border flex items-center justify-between shadow-sm"
+                      style={{
+                        backgroundColor: "#FDFCFB",
+                        borderColor: "#E5E0D8",
+                      }}
+                    >
+                      <div>
+                        <h3 className="font-serif-bold text-lg text-ink mb-1">
+                          ATS Optimization
+                        </h3>
+                        <p className="text-sm text-secondary">
+                          Match for {job.company}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-5 text-center">
+                        <div>
+                          <p className="text-xs text-secondary mb-1 font-medium uppercase tracking-wider">
+                            Original
+                          </p>
+                          <p
+                            className="font-serif-bold text-xl"
+                            style={{ color: "#8E8883" }}
+                          >
+                            {atsScores.before}%
+                          </p>
+                        </div>
+                        <div style={{ color: "#D95D39" }}>➔</div>
+                        <div>
+                          <p className="text-xs text-secondary mb-1 font-medium uppercase tracking-wider">
+                            Tailored
+                          </p>
+                          <p
+                            className="font-serif-bold text-2xl"
+                            style={{ color: "#22c55e" }}
+                          >
+                            {atsScores.after}%
+                          </p>
+                        </div>
+                        {atsScores.after > atsScores.before && (
+                          <div className="ml-1 px-3 py-1 rounded-full bg-green-100 text-green-700 font-bold text-sm">
+                            +{atsScores.after - atsScores.before}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={handleDownloadResume}
+                      className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                      style={{ backgroundColor: "#22c55e" }}
+                    >
+                      <Download className="w-5 h-5" />
+                      Download Tailored Resume
+                    </button>
+                    <a
+                      href={resumeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50 bg-white"
+                      style={{ borderColor: "#E5E0D8", color: "#4A443F" }}
+                    >
+                      <ExternalLink className="w-5 h-5" />
+                      Open in New Tab
+                    </a>
+                    <button
+                      onClick={() => {
+                        setResumeUrl(null);
+                        setResumeError(null);
+                        setAtsScores(null);
+                      }}
+                      className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-medium border transition-all hover:bg-gray-50 text-secondary bg-white"
+                      style={{ borderColor: "#E5E0D8" }}
+                    >
+                      <Wand2 className="w-5 h-5" />
+                      Regenerate
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
@@ -404,8 +534,8 @@ Location: ${job.location || ""}
                   backgroundColor: autoApplyResult?.success
                     ? "#22c55e"
                     : isAutoApplying
-                    ? "#3b82f6"
-                    : "#8b5cf6",
+                      ? "#3b82f6"
+                      : "#8b5cf6",
                 }}
               >
                 {isAutoApplying ? (
@@ -419,9 +549,9 @@ Location: ${job.location || ""}
                   Auto-Apply (Beta)
                 </h2>
                 <p className="text-secondary mb-4">
-                  Let our AI assistant open the job application page and auto-fill
-                  the form with your profile information. You&apos;ll need to review
-                  and submit manually.
+                  Let our AI assistant open the job application page and
+                  auto-fill the form with your profile information. You&apos;ll
+                  need to review and submit manually.
                 </p>
 
                 {/* Warning Banner */}
@@ -433,9 +563,9 @@ Location: ${job.location || ""}
                         Important: Review Before Submitting
                       </p>
                       <p className="text-sm text-amber-700 mt-1">
-                        This feature will auto-fill the application form but will
-                        NOT submit it. Always review the filled information before
-                        manually submitting your application.
+                        This feature will auto-fill the application form but
+                        will NOT submit it. Always review the filled information
+                        before manually submitting your application.
                       </p>
                     </div>
                   </div>
@@ -512,11 +642,12 @@ Location: ${job.location || ""}
             <div
               className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
               style={{
-                backgroundColor: recruiterEmails.length > 0
-                  ? "#22c55e"
-                  : isFindingRecruiter
-                  ? "#3b82f6"
-                  : "#ec4899",
+                backgroundColor:
+                  recruiterEmails.length > 0
+                    ? "#22c55e"
+                    : isFindingRecruiter
+                      ? "#3b82f6"
+                      : "#ec4899",
               }}
             >
               {isFindingRecruiter ? (
@@ -530,8 +661,9 @@ Location: ${job.location || ""}
                 Find Recruiter Email
               </h2>
               <p className="text-secondary mb-4">
-                Find HR and recruiter emails at {job?.company || "this company"} using Hunter.io.
-                We&apos;ll also generate a personalized outreach email template for you.
+                Find HR and recruiter emails at {job?.company || "this company"}{" "}
+                using Hunter.io. We&apos;ll also generate a personalized
+                outreach email template for you.
               </p>
 
               {/* Error Message */}
@@ -569,7 +701,10 @@ Location: ${job.location || ""}
               {/* Recruiter Emails Results */}
               {recruiterEmails.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="font-medium text-ink">Found {recruiterEmails.length} contact{recruiterEmails.length !== 1 ? 's' : ''}:</h3>
+                  <h3 className="font-medium text-ink">
+                    Found {recruiterEmails.length} contact
+                    {recruiterEmails.length !== 1 ? "s" : ""}:
+                  </h3>
                   <div className="space-y-3">
                     {recruiterEmails.map((recruiter, idx) => (
                       <div
@@ -591,12 +726,15 @@ Location: ${job.location || ""}
                               )}
                             </p>
                             <p className="text-sm text-secondary">
-                              {recruiter.position || "Employee"} • {recruiter.email}
+                              {recruiter.position || "Employee"} •{" "}
+                              {recruiter.email}
                             </p>
                           </div>
                         </div>
                         <button
-                          onClick={() => handleCopy(`email-${idx}`, recruiter.email)}
+                          onClick={() =>
+                            handleCopy(`email-${idx}`, recruiter.email)
+                          }
                           className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
                         >
                           {copied === `email-${idx}` ? (
@@ -613,7 +751,7 @@ Location: ${job.location || ""}
                         </button>
                       </div>
                     ))}
-                </div>
+                  </div>
                 </div>
               )}
 
@@ -623,15 +761,20 @@ Location: ${job.location || ""}
                   {recruiterEmails.length === 0 && (
                     <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
                       <p className="text-sm text-amber-700">
-                        ⚠️ No recruiter emails found in Hunter.io&apos;s database for this company.
-                        But here&apos;s a ready-to-use outreach template!
+                        ⚠️ No recruiter emails found in Hunter.io&apos;s
+                        database for this company. But here&apos;s a
+                        ready-to-use outreach template!
                       </p>
                     </div>
                   )}
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium text-ink">Outreach Email Template</h3>
+                    <h3 className="font-medium text-ink">
+                      Outreach Email Template
+                    </h3>
                     <button
-                      onClick={() => handleCopy("email-template", emailTemplate)}
+                      onClick={() =>
+                        handleCopy("email-template", emailTemplate)
+                      }
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-pink-100 hover:bg-pink-200 transition-colors text-pink-700"
                     >
                       {copied === "email-template" ? (
@@ -759,7 +902,8 @@ Location: ${job.location || ""}
                         onClick={() =>
                           handleCopy(
                             "achievements",
-                            applicationText.key_achievements?.join("\n• ") || ""
+                            applicationText.key_achievements?.join("\n• ") ||
+                              "",
                           )
                         }
                         className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
@@ -790,7 +934,7 @@ Location: ${job.location || ""}
                             <span className="text-green-600 mt-0.5">✓</span>
                             {achievement}
                           </li>
-                        )
+                        ),
                       )}
                     </ul>
                   </div>
@@ -809,8 +953,8 @@ Location: ${job.location || ""}
                           handleCopy(
                             "questions",
                             applicationText.questions_for_interviewer?.join(
-                              "\n• "
-                            ) || ""
+                              "\n• ",
+                            ) || "",
                           )
                         }
                         className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
@@ -846,7 +990,7 @@ Location: ${job.location || ""}
                             </span>
                             {question}
                           </li>
-                        )
+                        ),
                       )}
                     </ul>
                   </div>
