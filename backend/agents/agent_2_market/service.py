@@ -1,24 +1,7 @@
 # backend/agents/agent_2_market/service.py
-
 """
 Agent 2: Market Intelligence & Opportunity Aggregation
-
-This is a backend-only autonomous agent executed via cron job (once per day).
-It is never triggered by end users and serves all users globally.
-
-Responsibilities:
-- Collect, normalize, deduplicate, and persist Jobs, Hackathons, and Tech News
-- Analyze all users' target roles and skills
-- Strategically query multiple external data providers
-- Store results in Supabase and Pinecone
-
-Execution Guarantees:
-✅ 30 jobs stored per run
-✅ 10-20 hackathons stored per run  
-✅ 10 news articles stored per run
-✅ Same IDs in Supabase & Pinecone
-✅ Fair coverage for all users
-✅ Provider failure isolation (one failure doesn't stop the run)
+...
 """
 
 import os
@@ -27,6 +10,15 @@ from typing import Any, Optional
 from datetime import datetime, timezone
 from supabase import create_client
 from pinecone import Pinecone, ServerlessSpec
+
+# Centralised configuration
+from core.config import (
+    PINECONE_API_KEY,
+    PINECONE_INDEX_NAME,
+    PINECONE_DIMENSION,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+)
 
 # Import schemas and tools
 from .schemas import JobSchema, HackathonSchema, MarketNewsSchema, CronExecutionLog
@@ -76,17 +68,17 @@ class MarketIntelligenceService:
     def __init__(self):
         """Initialize service with database connections."""
         # Initialize Supabase
-        self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        
+        self.supabase_url = SUPABASE_URL
+        self.supabase_key = SUPABASE_SERVICE_ROLE_KEY
+
         if not self.supabase_url or not self.supabase_key:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-        
+
         self.supabase = create_client(self.supabase_url, self.supabase_key)
-        
-        # Initialize Pinecone
+
+        # Initialize Pinecone (index name from centralised config)
         self.pinecone_index = self._init_pinecone()
-        
+
         # Execution tracking
         self.execution_log = CronExecutionLog()
         self.provider_errors: dict[str, str] = {}
@@ -94,24 +86,24 @@ class MarketIntelligenceService:
     def _init_pinecone(self) -> Optional[Any]:
         """Initialize and return Pinecone index."""
         try:
-            api_key = os.getenv("PINECONE_API_KEY")
-            if not api_key:
+            if not PINECONE_API_KEY:
                 print("[Market] PINECONE_API_KEY not found, vectors will not be stored")
                 return None
-            
-            index_name = os.getenv("PINECONE_INDEX_NAME", "career-flow-jobs")
-            pc = Pinecone(api_key=api_key)
-            
+
+            # index_name from centralised config — same index across all agents
+            index_name = PINECONE_INDEX_NAME
+            pc = Pinecone(api_key=PINECONE_API_KEY)
+
             # Create index if it doesn't exist
             if index_name not in pc.list_indexes().names():
                 print(f"[Market] Creating Pinecone index: {index_name}")
                 pc.create_index(
                     name=index_name,
-                    dimension=768,
+                    dimension=PINECONE_DIMENSION,
                     metric="cosine",
                     spec=ServerlessSpec(cloud="aws", region="us-east-1")
                 )
-            
+
             return pc.Index(index_name)
         except Exception as e:
             print(f"[Market] Pinecone initialization failed: {str(e)}")

@@ -141,7 +141,7 @@ def extract_structured_data(text: str) -> dict[str, Any]:
 
 def generate_embedding(text: str) -> list[float]:
     """
-    Generate embeddings using Google's Gemini Embedding model.
+    Generate embeddings using Google GenAI.
     Uses gemini-embedding-001 with output_dimensionality=768 to match Pinecone index.
     """
     api_key = os.getenv("GEMINI_API_KEY")
@@ -149,16 +149,14 @@ def generate_embedding(text: str) -> list[float]:
         raise ValueError("GEMINI_API_KEY must be set in .env")
 
     try:
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client(api_key=api_key)
-        response = client.models.embed_content(
-            model="gemini-embedding-001",
-            contents=text,
-            config=types.EmbedContentConfig(output_dimensionality=768),
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        result = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=text,
+            output_dimensionality=768
         )
-        return response.embeddings[0].values
+        return result["embedding"]
     except Exception as e:
         raise Exception(f"Error generating embedding: {str(e)}")
 

@@ -9,6 +9,15 @@ from fastapi import UploadFile, HTTPException
 from supabase import create_client
 from pinecone import Pinecone
 
+# Centralised configuration — single source of truth for Pinecone
+from core.config import (
+    PINECONE_API_KEY,
+    PINECONE_INDEX_NAME,
+    PINECONE_NS_USERS,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+)
+
 # Import tools
 from .tools import (
     parse_pdf, 
@@ -34,13 +43,13 @@ from services.cache_service import cache_service
 
 class PerceptionService:
     def __init__(self):
-        self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        self.supabase_url = SUPABASE_URL
+        self.supabase_key = SUPABASE_SERVICE_ROLE_KEY
         self.supabase = create_client(self.supabase_url, self.supabase_key)
-        
-        # Init Pinecone
-        self.pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-        self.index_name = os.getenv("PINECONE_INDEX_NAME", "career-flow")
+
+        # Init Pinecone — index name from centralised config (no local fallback)
+        self.pc = Pinecone(api_key=PINECONE_API_KEY)
+        self.index_name = PINECONE_INDEX_NAME
         self.index = self.pc.Index(self.index_name)
 
     # =========================================================================
@@ -143,7 +152,7 @@ class PerceptionService:
                     "type": "user_profile"
                 }
             }
-            self.index.upsert(vectors=[vector_data], namespace="users")
+            self.index.upsert(vectors=[vector_data], namespace=PINECONE_NS_USERS)
 
             return profile_data
 

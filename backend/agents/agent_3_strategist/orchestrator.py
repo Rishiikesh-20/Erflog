@@ -344,108 +344,107 @@ Requirements:
 
 
 # =============================================================================
-# LANGGRAPH NODES
+# LANGGRAPH TOOLS (for the ReACT orchestrator agent)
 # =============================================================================
 
-def enrich_jobs_node(state: OrchestratorState) -> dict:
+from langchain_core.tools import tool as lc_tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.prebuilt import create_react_agent
+
+@lc_tool
+def enrich_single_job(
+    job_json: str,
+    user_skills_csv: str,
+    user_profile_json: str,
+) -> str:
+    """Enrich a single job with a learning roadmap (if match < 80%) and
+    application text.
+
+    Args:
+        job_json: JSON string of the job dict (must include title, company,
+                  score, summary/description).
+        user_skills_csv: Comma-separated list of the user's skills.
+        user_profile_json: JSON string of the user's profile dict.
+
+    Returns:
+        JSON string of the enriched job dict with ``roadmap`` and
+        ``application_text`` keys added.
     """
-    Process all jobs:
-    - Jobs with score >= 0.80: No roadmap needed (high match)
-    - Jobs with score < 0.80: Generate roadmap
-    - All jobs: Generate default application text
+    job = json.loads(job_json)
+    user_profile = json.loads(user_profile_json)
+    user_skills = [s.strip() for s in user_skills_csv.split(",") if s.strip()]
 
-    Note: Resume generation is user-triggered (not part of cron) to avoid heavy processing.
+    score = job.get("score", 0)
+    match_pct = job.get("match_percentage", score)
+
+    enriched = {**job}
+
+    # Roadmap only for weaker matches
+    if match_pct < 0.80:
+        enriched["roadmap"] = generate_roadmap_for_job(user_skills, job)
+        enriched["needs_improvement"] = True
+    else:
+        enriched["roadmap"] = None
+        enriched["needs_improvement"] = False
+
+    # Application text for every job
+    enriched["application_text"] = generate_application_text(user_profile, job)
+    enriched["resume_url"] = None
+
+    return json.dumps(enriched, default=str)
+
+
+@lc_tool
+def analyse_career_strategy(
+    user_skills_csv: str,
+    top_jobs_json: str,
+) -> str:
+    """Given the user's skills and a JSON list of their top matched jobs,
+    produce a brief career strategy recommendation.
+
+    Returns JSON with keys: recommended_job, reason, next_steps.
     """
-    jobs = state.get("jobs", [])
-    user_id = state.get("user_id")
-    user_profile = state.get("user_profile", {})
-    user_skills = user_profile.get("skills", [])
+    from .graph import process_career_strategy  # existing helper
 
-    if not jobs:
-        logger.warning("No jobs to enrich")
-        return {"enriched_jobs": [], "status": "no_jobs"}
-
-    enriched_jobs = []
-
-    for idx, job in enumerate(jobs):
-        score = job.get("score", 0)
-        # Use match_percentage (normalized semantic score) for roadmap threshold.
-        # Falls back to score if match_percentage is missing (backward compat).
-        match_pct = job.get("match_percentage", score)
-        job_id = job.get("id", "unknown")
-        job_title = job.get("title", "Position")
-        job_company = job.get("company", "Company")
-
-        logger.info(f"Processing job {idx+1}/{len(jobs)}: {job_title} at {job_company} (match: {match_pct:.1%})")
-
-        enriched_job = {**job}
-
-        # Generate roadmap only for jobs with match_percentage < 80%
-        if match_pct < 0.80:
-            logger.info(f"  → Generating roadmap (match {match_pct:.1%} < 80%)")
-            enriched_job["roadmap"] = generate_roadmap_for_job(user_skills, job)
-            enriched_job["needs_improvement"] = True
-        else:
-            logger.info(f"  → High match ({match_pct:.1%} >= 80%), no roadmap needed")
-            enriched_job["roadmap"] = None
-            enriched_job["needs_improvement"] = False
-
-        # Generate application text for ALL jobs
-        logger.info(f"  → Generating application text")
-        enriched_job["application_text"] = generate_application_text(user_profile, job)
-
-        # Resume URL is null - user will generate on-demand via Apply page
-        enriched_job["resume_url"] = None
-
-        enriched_jobs.append(enriched_job)
-
-    logger.info(f"✅ Enriched {len(enriched_jobs)} jobs")
-    return {"enriched_jobs": enriched_jobs, "status": "enriched"}
+    jobs = json.loads(top_jobs_json)
+    result = process_career_strategy(user_skills_csv, jobs)
+    return json.dumps(result, default=str)
 
 
-def finalize_node(state: OrchestratorState) -> dict:
-    """
-    Final node - prepare data for storage.
-    """
-    enriched_jobs = state.get("enriched_jobs", [])
+ORCHESTRATOR_TOOLS = [enrich_single_job, analyse_career_strategy]
 
-    # Count statistics
-    jobs_with_roadmap = sum(1 for j in enriched_jobs if j.get("roadmap"))
-    high_match_jobs = sum(1 for j in enriched_jobs if not j.get("needs_improvement"))
+ORCHESTRATOR_SYSTEM_PROMPT = """You are the Career Strategist Orchestrator of Career Flow AI.
 
-    logger.info(f"📊 Final Stats: {len(enriched_jobs)} jobs total")
-    logger.info(f"   - High match (≥80%): {high_match_jobs}")
-    logger.info(f"   - Need improvement: {jobs_with_roadmap}")
+You receive a list of matched jobs for a user and must enrich each one.
 
-    return {"status": "complete"}
+## Your Tools
+1. **enrich_single_job** – For each job, call this to generate a learning
+   roadmap (only when match < 80%) and application text.
+2. **analyse_career_strategy** – After enriching all jobs, call this once
+   with the user's skills and the top 3 jobs to produce a career strategy.
+
+## Instructions
+- Process every job in the list by calling enrich_single_job for each one.
+- After all jobs are enriched, call analyse_career_strategy once.
+- Summarise the results when done.
+- If any tool call fails for a specific job, skip it and continue with the
+  next job.  Never stop the entire run because of one failure.
+"""
+
+
+def _get_orchestrator_llm():
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        temperature=0.1,
+        google_api_key=api_key,
+    )
 
 
 # =============================================================================
-# BUILD GRAPH
-# =============================================================================
-
-def build_orchestrator_graph() -> StateGraph:
-    """Build the orchestrator workflow graph."""
-    workflow = StateGraph(OrchestratorState)
-
-    # Add nodes
-    workflow.add_node("enrich_jobs", enrich_jobs_node)
-    workflow.add_node("finalize", finalize_node)
-
-    # Define edges
-    workflow.add_edge(START, "enrich_jobs")
-    workflow.add_edge("enrich_jobs", "finalize")
-    workflow.add_edge("finalize", END)
-
-    return workflow.compile()
-
-
-# Create singleton graph instance
-orchestrator_graph = build_orchestrator_graph()
-
-
-# =============================================================================
-# PUBLIC API
+# PUBLIC API  (backward-compatible signature)
 # =============================================================================
 
 def run_orchestration(
@@ -457,7 +456,11 @@ def run_orchestration(
     hot_skills: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Run the full orchestration workflow for a user.
+    Run the full orchestration workflow for a user deterministically.
+
+    This is the hybrid approach:
+    1. Deterministic loop: Enrich each job (roadmap if match < 80%, plus app text)
+    2. LLM call: Synthesize career strategy from the top jobs
 
     Args:
         user_id: User's UUID
@@ -470,41 +473,70 @@ def run_orchestration(
     Returns:
         Complete today_data with enriched jobs (roadmaps + application text)
     """
-    logger.info(f"🚀 Starting orchestration for user {user_id[:8]}...")
-
-    initial_state: OrchestratorState = {
-        "user_id": user_id,
-        "user_profile": user_profile,
-        "user_vector": [],
-        "jobs": jobs or [],
-        "hackathons": hackathons or [],
-        "news": news or [],
-        "hot_skills": hot_skills or [],
-        "enriched_jobs": [],
-        "status": "starting",
-        "error": None
-    }
+    logger.info(f"🚀 Starting hybrid orchestration for user {user_id[:8]}...")
+    from .graph import process_career_strategy
 
     try:
-        result = orchestrator_graph.invoke(initial_state)
+        user_skills = user_profile.get("skills", [])
+        skills_csv = ", ".join(user_skills) if isinstance(user_skills, list) else str(user_skills)
 
-        # Build final today_data structure
+        # 1. Deterministic Enrichment Loop
+        enriched_jobs = []
+        for job in (jobs or []):
+            score = job.get("score", 0)
+            match_pct = job.get("match_percentage", score)
+
+            enriched = {**job}
+
+            # Roadmap only for weaker matches
+            if match_pct < 0.80:
+                try:
+                    enriched["roadmap"] = generate_roadmap_for_job(user_skills, job)
+                    enriched["needs_improvement"] = True
+                except Exception as e:
+                    logger.warning(f"Roadmap generation failed for job {job.get('id')}: {e}")
+                    enriched["roadmap"] = None
+                    enriched["needs_improvement"] = False
+            else:
+                enriched["roadmap"] = None
+                enriched["needs_improvement"] = False
+
+            # Application text for every job
+            try:
+                enriched["application_text"] = generate_application_text(user_profile, job)
+            except Exception as e:
+                logger.warning(f"App text generation failed for job {job.get('id')}: {e}")
+                enriched["application_text"] = None
+                
+            enriched["resume_url"] = None
+            enriched_jobs.append(enriched)
+
+        # 2. LLM Strategy Synthesis
+        career_strategy = {}
+        if enriched_jobs:
+            try:
+                career_strategy = process_career_strategy(skills_csv, enriched_jobs[:3])
+            except Exception as e:
+                logger.error(f"Career strategy synthesis failed: {e}")
+
+        # 3. Compile output
         today_data = {
-            "jobs": result.get("enriched_jobs", []),
+            "jobs": enriched_jobs,
             "hackathons": hackathons or [],
             "news": news or [],
             "hot_skills": hot_skills or [],
+            "career_strategy": career_strategy,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "stats": {
-                "jobs_count": len(result.get("enriched_jobs", [])),
-                "jobs_with_roadmap": sum(1 for j in result.get("enriched_jobs", []) if j.get("roadmap")),
-                "high_match_jobs": sum(1 for j in result.get("enriched_jobs", []) if not j.get("needs_improvement")),
+                "jobs_count": len(enriched_jobs),
+                "jobs_with_roadmap": sum(1 for j in enriched_jobs if j.get("roadmap")),
+                "high_match_jobs": sum(1 for j in enriched_jobs if not j.get("needs_improvement")),
                 "hackathons_count": len(hackathons or []),
-                "news_count": len(news or [])
-            }
+                "news_count": len(news or []),
+            },
         }
 
-        logger.info(f"✅ Orchestration complete for user {user_id[:8]}")
+        logger.info(f"✅ Hybrid orchestration complete for user {user_id[:8]}")
         return today_data
 
     except Exception as e:
@@ -512,7 +544,6 @@ def run_orchestration(
         import traceback
         traceback.print_exc()
 
-        # Return basic data without enrichment on failure
         return {
             "jobs": jobs or [],
             "hackathons": hackathons or [],
@@ -523,6 +554,7 @@ def run_orchestration(
                 "jobs_count": len(jobs or []),
                 "hackathons_count": len(hackathons or []),
                 "news_count": len(news or []),
-                "error": str(e)
-            }
+                "error": str(e),
+            },
         }
+

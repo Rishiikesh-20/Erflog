@@ -525,33 +525,26 @@ These API functions are defined in `lib/api.ts` and may be used by various compo
 |----------|--------|----------|-------|
 | `/` | GET | `getApiInfo()` | System |
 | `/health` | GET | `healthCheck()` | System |
-| `/api/init` | POST | `initSession()` | System |
 | `/api/me` | GET | `getCurrentUser()` | Auth |
 
 ### Resume & GitHub
 
 | Endpoint | Method | Function | Agent |
 |----------|--------|----------|-------|
-| `/api/upload-resume` | POST | `uploadResume()` | Agent 1 (Perception) |
-| `/api/sync-github` | POST | `syncGithub()` | Agent 1 (Perception) |
+| `/api/perception/upload-resume` | POST | `uploadResumePerception()` | Agent 1 (Perception) |
 | `/api/perception/sync-github` | POST | `syncGitHubPerception()` | Agent 1 (Perception) |
-| `/api/watchdog/check` | POST | `checkWatchdog()` | Digital Twin Watchdog |
+| `/api/perception/watchdog/check` | GET | `checkWatchdogStatus()` | Digital Twin Watchdog |
 
 ### Strategy & Matching
 
 | Endpoint | Method | Function | Agent |
 |----------|--------|----------|-------|
-| `/api/generate-strategy` | POST | `generateStrategy()` | Agent 3 (Strategist) |
-| `/api/generate-application` | POST | `generateApplication()` | Agent 4 (Operative) |
-| `/api/match` | POST | `matchJobs()` | Agent 2 (Market Sentinel) + Agent 3 (Strategist) |
-
-### Analysis
-
-| Endpoint | Method | Function | Agent |
-|----------|--------|----------|-------|
-| `/analyze` | POST | `analyze()` | Agent 6 (Chat Assistant) |
-
----
+| `/api/strategist/jobs` | GET | `getTodayJobs()` | Agent 3 (Strategist) |
+| `/api/strategist/hackathons` | GET | `getTodayHackathons()` | Agent 3 (Strategist) |
+| `/api/strategist/dashboard` | GET | `getStrategistDashboard()` | Agent 3 (Strategist) |
+| `/api/strategist/refresh` | POST | `refreshTodayData()` | Agent 3 (Strategist) |
+| `/agent4/generate-resume` | POST | `generateTailoredResume()` | Agent 4 (Operative) |
+| `/agent4/auto-apply` | POST | `autoApplyToJob()` | Agent 4 (Operative) |
 
 ## 🤖 AI Agents Summary
 
@@ -577,7 +570,8 @@ All TypeScript interfaces are defined in `lib/api.ts`. Key types include:
 - `QuizQuestion` / `QuizAnswer` / `QuizSubmitResponse`
 - `DashboardInsightsResponse`
 - `ResumeUploadResponse`
-- `StrategyJobMatch` / `GenerateStrategyResponse`
+- `StrategyJobMatch`
+- `TodayJobsResponse` / `TodayHackathonsResponse` / `StrategistDashboardResponse`
 - `InterviewResponse`
 - `GenerateKitResponse`
 - `RoadmapDetails` / `RoadmapGraph` / `GraphNode` / `GraphEdge`

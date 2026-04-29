@@ -13,8 +13,6 @@ import * as api from "./api";
 import {
   UserProfile,
   StrategyJobMatch,
-  MatchResponse,
-  Strategy,
 } from "./api";
 
 // Supabase client initialization
@@ -133,13 +131,13 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const response = await api.initSession();
-      if (response.status === "success") {
-        setSessionId(response.session_id);
-        localStorage.setItem("erflog_session_id", response.session_id);
-        return response.session_id;
+      const response = await api.getCurrentUser();
+      if (response.user_id) {
+        setSessionId(response.user_id);
+        localStorage.setItem("erflog_session_id", response.user_id);
+        return response.user_id;
       }
-      throw new Error("Failed to initialize session");
+      throw new Error("Failed to initialize user session");
     } catch (err) {
       const msg = api.getErrorMessage(err);
       setError(msg);
@@ -151,16 +149,26 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
 
   // --- THE FIX IS HERE ---
   const uploadUserResume = useCallback(
-    async (file: File, activeSessionId: string, githubUrl?: string) => {
+    async (file: File, activeSessionId: string, _githubUrl?: string) => {
       setIsLoading(true);
       setError(null);
       try {
-        // Pass the githubUrl to the API call
-        const response = await api.uploadResume(file, activeSessionId, githubUrl);
-        
-        if (response.status === "success" && response.profile) {
-          setProfile(response.profile);
-          localStorage.setItem("erflog_profile", JSON.stringify(response.profile));
+        const response = await api.uploadResumePerception(file);
+
+        if (response.status === "success" && response.data) {
+          const nextProfile: UserProfile = {
+            user_id: response.data.user_id || activeSessionId,
+            name: response.data.name || "",
+            email: response.data.email || "",
+            skills: response.data.skills || [],
+            experience_summary: response.data.experience_summary || "",
+            education: JSON.stringify(response.data.education || []),
+          };
+
+          setSessionId(nextProfile.user_id);
+          setProfile(nextProfile);
+          localStorage.setItem("erflog_session_id", nextProfile.user_id);
+          localStorage.setItem("erflog_profile", JSON.stringify(nextProfile));
           return true;
         }
         return false;
@@ -191,16 +199,39 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
       setError(null);
 
       try {
-        // Use user skills as default query if none provided
-        const searchQuery = query || profile.skills.join(", ");
-        
-        // Use matchJobs (Agent 3) which includes roadmaps
-        const response = await api.matchJobs(searchQuery);
-        
-        if (response.status === "success" && response.matches) {
-          // Convert MatchJobResult to StrategyJobMatch type if needed
-          // or ensure types align in api.ts. Here we assume they are compatible.
-          setStrategyJobs(response.matches as unknown as StrategyJobMatch[]);
+        if (forceRefresh) {
+          await api.refreshTodayData();
+        }
+
+        const response = await api.getTodayJobs();
+        if (response.status === "success" && response.jobs) {
+          const normalizedQuery = query?.trim().toLowerCase();
+          const jobs = normalizedQuery
+            ? response.jobs.filter((job) => {
+                const haystack = [
+                  job.title,
+                  job.company,
+                  job.summary,
+                  job.description,
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+                  .toLowerCase();
+                return haystack.includes(normalizedQuery);
+              })
+            : response.jobs;
+
+          const mappedJobs: StrategyJobMatch[] = jobs.map((job) => ({
+            id: String(job.id),
+            score: typeof job.score === "number" ? job.score : 0,
+            title: job.title,
+            company: job.company,
+            description: job.summary || job.description || "",
+            link: job.link || "",
+            roadmap_details: job.roadmap || null,
+          }));
+
+          setStrategyJobs(mappedJobs);
           return true;
         }
         return false;

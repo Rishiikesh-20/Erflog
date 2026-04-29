@@ -75,17 +75,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state and listen for changes
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const user = session?.user ?? null;
-      setState({
-        session,
-        user,
-        isLoading: false,
-        isAuthenticated: !!session,
-        userMetadata: extractUserMetadata(user),
+    // Get initial session — gracefully handle stale/corrupt refresh tokens
+    supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) {
+          console.warn("Session recovery failed, clearing stale auth:", error.message);
+          // Clear corrupt tokens so the error doesn't persist
+          supabase.auth.signOut().catch(() => {});
+          setState((prev) => ({ ...prev, isLoading: false }));
+          return;
+        }
+        const user = session?.user ?? null;
+        setState({
+          session,
+          user,
+          isLoading: false,
+          isAuthenticated: !!session,
+          userMetadata: extractUserMetadata(user),
+        });
+      })
+      .catch((err) => {
+        console.warn("Unexpected auth error, clearing session:", err);
+        supabase.auth.signOut().catch(() => {});
+        setState((prev) => ({ ...prev, isLoading: false }));
       });
-    });
 
     // Listen for auth state changes
     const {
@@ -110,6 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          prompt: "select_account",
+          access_type: "offline",
+        },
       },
     });
   };

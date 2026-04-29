@@ -1,4 +1,3 @@
-import os
 import json
 import logging
 from typing import List, Dict, Any, Optional
@@ -8,13 +7,18 @@ from google import genai
 from google.genai import types
 import numpy as np
 from .roadmap import generate_gap_roadmap
+from core.config import (
+    PINECONE_API_KEY,
+    PINECONE_INDEX_NAME,
+    PINECONE_NS_JOBS,
+    PINECONE_NS_USERS,
+    GEMINI_API_KEY,
+)
 load_dotenv()
 
 logger = logging.getLogger("Agent3")
 
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "ai-verse")
+INDEX_NAME = PINECONE_INDEX_NAME
 
 pc: Optional[Pinecone] = None
 index = None
@@ -36,10 +40,15 @@ def _init_clients():
 def search_jobs(user_query_text: str, top_k: int = 10) -> List[Dict[str, Any]]:
     _init_clients()
 
+    # Score normalization constants (must match service.py)
+    SCORE_FLOOR = 0.30
+    SCORE_CEILING = 0.62
+
     try:
         response = client.models.embed_content(
-            model="text-embedding-004",
+            model="gemini-embedding-001",
             contents=user_query_text,
+            config={"output_dimensionality": 768},
         )
         user_vector = response.embeddings[0].values
 
@@ -47,15 +56,27 @@ def search_jobs(user_query_text: str, top_k: int = 10) -> List[Dict[str, Any]]:
             vector=user_vector,
             top_k=top_k,
             include_metadata=True,
-            namespace="" 
+            namespace=PINECONE_NS_JOBS
         )
 
         matches = []
         for match in search_results['matches']:
             md = match.get('metadata', {})
+            raw_score = match['score']
+            # Normalize raw cosine to human-meaningful range
+            if raw_score <= SCORE_FLOOR:
+                normalized = 0.0
+            elif raw_score >= SCORE_CEILING:
+                normalized = 1.0
+            else:
+                normalized = (raw_score - SCORE_FLOOR) / (SCORE_CEILING - SCORE_FLOOR)
+            
             job_obj = {
-                "id": match['id'],  # Use the actual Pinecone ID (e.g., "hackathon_13")
-                "score": match['score'],
+                "id": match['id'],
+                "score": round(normalized, 4),
+                "raw_score": round(raw_score, 4),
+                "semantic_score": round(normalized, 4),
+                "rank_score": round(normalized, 4),
                 "title": md.get("title", "Unknown Role"),
                 "company": md.get("company", md.get("company_name", "Unknown Company")),
                 "description": md.get("summary", md.get("description", "No description available.")),
@@ -119,9 +140,9 @@ def get_interview_gap_analysis(job_id: str, user_id: str) -> Dict[str, Any]:
     try:
         # Clean job_id (remove .0 suffix if present)
         job_id_clean = str(int(float(job_id)))
-        print(f"[Agent3] Fetching job_id={job_id_clean} from Pinecone (namespace='')")
-        
-        job_fetch = index.fetch(ids=[job_id_clean], namespace="")
+        print(f"[Agent3] Fetching job_id={job_id_clean} from Pinecone")
+
+        job_fetch = index.fetch(ids=[job_id_clean], namespace=PINECONE_NS_JOBS)
         job_vector = None
         job_metadata = {}
         
@@ -144,7 +165,7 @@ def get_interview_gap_analysis(job_id: str, user_id: str) -> Dict[str, Any]:
                 sample_query = index.query(
                     vector=[0.1] * 768,  # Match index dimension (768 not 1536)
                     top_k=5,
-                    namespace="",
+                    namespace=PINECONE_NS_JOBS,
                     include_metadata=True
                 )
                 if sample_query and sample_query.get('matches'):
@@ -160,8 +181,8 @@ def get_interview_gap_analysis(job_id: str, user_id: str) -> Dict[str, Any]:
                 "gap_analysis": {}
             }
         
-        print(f"[Agent3] Fetching user_id={user_id} from Pinecone (namespace='users')")
-        user_fetch = index.fetch(ids=[str(user_id)], namespace="users")
+        print(f"[Agent3] Fetching user_id={user_id} from Pinecone")
+        user_fetch = index.fetch(ids=[str(user_id)], namespace=PINECONE_NS_USERS)
         user_vector = None
         user_metadata = {}
         
@@ -188,8 +209,21 @@ def get_interview_gap_analysis(job_id: str, user_id: str) -> Dict[str, Any]:
         job_vec = np.array(job_vector)
         user_vec = np.array(user_vector)
         
-        similarity = np.dot(job_vec, user_vec) / (np.linalg.norm(job_vec) * np.linalg.norm(user_vec))
-        similarity_score = float(similarity)
+        raw_similarity = np.dot(job_vec, user_vec) / (np.linalg.norm(job_vec) * np.linalg.norm(user_vec))
+        raw_similarity = float(raw_similarity)
+        
+        # Normalize raw cosine similarity to meaningful range
+        # Raw scores from text-embedding-004 cross-domain text cluster in ~[0.3, 0.62]
+        SCORE_FLOOR = 0.30
+        SCORE_CEILING = 0.62
+        if raw_similarity <= SCORE_FLOOR:
+            similarity_score = 0.0
+        elif raw_similarity >= SCORE_CEILING:
+            similarity_score = 1.0
+        else:
+            similarity_score = (raw_similarity - SCORE_FLOOR) / (SCORE_CEILING - SCORE_FLOOR)
+        
+        print(f"[Agent3] Raw cosine: {raw_similarity:.4f} → Normalized: {similarity_score:.2%}")
         
         job_title = job_metadata.get("title", "Unknown Position")
         job_company = job_metadata.get("company", "Unknown Company")

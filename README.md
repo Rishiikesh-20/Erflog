@@ -572,7 +572,7 @@ Continuous learning and improvement
    
    # Vector Database
    PINECONE_API_KEY=your_pinecone_api_key
-   PINECONE_INDEX_NAME=ai-verse
+   PINECONE_INDEX_NAME=career-flow
    
    # Job APIs
    TAVILY_API_KEY=your_tavily_api_key
@@ -650,7 +650,7 @@ Continuous learning and improvement
    
    # Vector Database
    PINECONE_API_KEY=your_pinecone_api_key
-   PINECONE_INDEX_NAME=ai-verse
+   PINECONE_INDEX_NAME=career-flow
    
    # Job APIs
    TAVILY_API_KEY=your_tavily_api_key

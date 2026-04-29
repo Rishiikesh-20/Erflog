@@ -4,10 +4,9 @@ from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
 from pinecone import Pinecone
-from langchain_google_genai import ChatGoogleGenerativeAI
-from google import genai
-from google.genai import types
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
+from core.config import PINECONE_API_KEY, PINECONE_INDEX_NAME, GEMINI_API_KEY
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +25,7 @@ def analyze_rejection(job_desc: str, resume_content: dict) -> str:
     """
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
-        google_api_key=os.getenv("GEMINI_API_KEY"),
+        google_api_key=GEMINI_API_KEY,
         temperature=0.3
     )
     
@@ -76,12 +75,20 @@ def update_vector_memory(
         A dictionary with status and updated metadata.
     """
     # Initialize Pinecone
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    index_name = os.getenv("PINECONE_INDEX_NAME", "ai-verse")
-    index = pc.Index(index_name)
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index = pc.Index(PINECONE_INDEX_NAME)
     
-    # Initialize embeddings via google.genai
-    genai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    # Initialize embeddings - MUST use gemini-embedding-001 to match Agent 2 job vectors
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    def _embed_text(text: str) -> list[float]:
+        result = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=text,
+            output_dimensionality=768
+        )
+        return result["embedding"]
     
     result = {
         "status": "success",
@@ -140,12 +147,7 @@ def update_vector_memory(
             anti_pattern_id = f"anti_{user_id}_{hash(gap_analysis) % 10000}"
             
             # Generate embedding for the gap analysis
-            gap_response = genai_client.models.embed_content(
-                model="gemini-embedding-001",
-                contents=gap_analysis,
-                config=types.EmbedContentConfig(output_dimensionality=768),
-            )
-            gap_embedding = gap_response.embeddings[0].values
+            gap_embedding = _embed_text(gap_analysis)
             
             anti_pattern_metadata = {
                 "user_id": user_id,
@@ -178,19 +180,20 @@ def check_anti_patterns(user_id: str, job_description: str, threshold: float = 0
     """
     Checks if a job description matches known anti-patterns for a user.
     """
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    index_name = os.getenv("PINECONE_INDEX_NAME", "ai-verse")
-    index = pc.Index(index_name)
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index = pc.Index(PINECONE_INDEX_NAME)
     
-    genai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    # MUST use gemini-embedding-001 to match Agent 2 job vectors
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
     
     # Generate embedding for job description
-    job_response = genai_client.models.embed_content(
-        model="gemini-embedding-001",
-        contents=job_description,
-        config=types.EmbedContentConfig(output_dimensionality=768),
+    emb_result = genai.embed_content(
+        model="models/gemini-embedding-001",
+        content=job_description,
+        output_dimensionality=768
     )
-    job_embedding = job_response.embeddings[0].values
+    job_embedding = emb_result["embedding"]
     
     # Query anti-patterns namespace
     query_response = index.query(

@@ -84,8 +84,11 @@ Step 7-9: Normalization & Deduplication
     └── Same ID in Supabase AND Pinecone
 
 Step 10: Storage
-    └── Supabase: jobs, market_news tables
-    └── Pinecone: __default__ namespace
+    └── Supabase: jobs, hackathons, market_news tables
+    └── Pinecone: one shared index with namespaces:
+        jobs -> ""
+        hackathons -> "hackathon"
+        news -> "news"
 ```
 
 ---
@@ -208,7 +211,7 @@ NEWSDATA_API_KEY=xxx
 
 # Vector Database
 PINECONE_API_KEY=xxx
-PINECONE_INDEX_NAME=career-flow-jobs
+PINECONE_INDEX_NAME=career-flow
 
 # Security (Optional)
 CRON_SECRET=your-cron-secret
@@ -267,4 +270,4 @@ Possible statuses:
 1. **Rate Limits:** Each provider has rate limits. The agent distributes queries to stay within limits.
 2. **LLM Usage:** Gemini is only used for query generation and role optimization, never for fetching external data.
 3. **No User Personalization:** This agent serves all users equally with a global market scan.
-4. **Vector Namespace:** All vectors are stored in the `__default__` namespace with `type` metadata for filtering.
+4. **Vector Namespaces:** Jobs use the default namespace `""`, hackathons use `"hackathon"`, and news uses `"news"` in the shared Pinecone index.

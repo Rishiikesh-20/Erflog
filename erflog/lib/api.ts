@@ -474,35 +474,6 @@ export async function checkWatchdog(
   return response.data;
 }
 
-export async function generateStrategy(
-  query: string,
-): Promise<GenerateStrategyResponse> {
-  const response = await api.post<GenerateStrategyResponse>(
-    "/api/generate-strategy",
-    { query },
-  );
-  return response.data;
-}
-
-export async function generateApplication(
-  sessionId: string,
-  jobDescription?: string,
-): Promise<GenerateApplicationResponse> {
-  const response = await api.post<GenerateApplicationResponse>(
-    "/api/generate-application",
-    {
-      session_id: sessionId,
-      ...(jobDescription && { job_description: jobDescription }),
-    },
-  );
-  return response.data;
-}
-
-export async function matchJobs(query: string): Promise<MatchResponse> {
-  const response = await api.post<MatchResponse>("/api/match", { query });
-  return response.data;
-}
-
 export async function interviewChat(
   sessionId: string,
   jobContext: string,
@@ -562,17 +533,6 @@ export async function generateKit(
     job_description: jobDescription,
   });
   return response.data as GenerateKitResponse;
-}
-
-export async function analyze(
-  userInput: string,
-  context: Record<string, unknown> = {},
-): Promise<{ status: string; message: string; data: Record<string, unknown> }> {
-  const response = await api.post("/analyze", {
-    user_input: userInput,
-    context,
-  });
-  return response.data;
 }
 
 export function getErrorMessage(error: unknown): string {

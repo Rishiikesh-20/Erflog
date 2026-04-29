@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
@@ -9,6 +9,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading, signInWithGoogle, signInWithGitHub } =
     useAuth();
+  const [isSignUp, setIsSignUp] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function LoginPage() {
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
           <h2 className="text-2xl font-semibold text-gray-900 text-center mb-6">
-            Sign In
+            {isSignUp ? "Create Account" : "Sign In"}
           </h2>
 
           <div className="space-y-4">
@@ -69,7 +70,7 @@ export default function LoginPage() {
                 />
               </svg>
               <span className="text-gray-700 font-medium">
-                Continue with Google
+                {isSignUp ? "Sign up with Google" : "Continue with Google"}
               </span>
             </button>
 
@@ -85,7 +86,9 @@ export default function LoginPage() {
                   clipRule="evenodd"
                 />
               </svg>
-              <span className="font-medium">Continue with GitHub</span>
+              <span className="font-medium">
+                {isSignUp ? "Sign up with GitHub" : "Continue with GitHub"}
+              </span>
             </button>
           </div>
 
@@ -101,9 +104,34 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Toggle Sign In / Sign Up */}
+          <p className="text-center text-sm text-gray-600">
+            {isSignUp ? (
+              <>
+                Already have an account?{" "}
+                <button
+                  onClick={() => setIsSignUp(false)}
+                  className="text-blue-600 hover:underline font-medium"
+                >
+                  Sign In
+                </button>
+              </>
+            ) : (
+              <>
+                Don&apos;t have an account?{" "}
+                <button
+                  onClick={() => setIsSignUp(true)}
+                  className="text-blue-600 hover:underline font-medium"
+                >
+                  Sign Up
+                </button>
+              </>
+            )}
+          </p>
+
           {/* Info */}
-          <p className="text-center text-sm text-gray-500">
-            By signing in, you agree to our Terms of Service and Privacy Policy.
+          <p className="text-center text-sm text-gray-500 mt-4">
+            By continuing, you agree to our Terms of Service and Privacy Policy.
           </p>
         </div>
 

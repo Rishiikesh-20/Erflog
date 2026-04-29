@@ -8,17 +8,18 @@ from dotenv import load_dotenv
 load_dotenv()
 from pinecone import Pinecone
 from google import genai
+from core.config import PINECONE_API_KEY, PINECONE_INDEX_NAME, GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 USER_ID = "483287fc-427a-4b4a-9b8a-2036282348ca"
 
 # Setup
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-idx = pc.Index("ai-verse")
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+pc = Pinecone(api_key=PINECONE_API_KEY)
+idx = pc.Index(PINECONE_INDEX_NAME)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # 1. Get user profile text
 from supabase import create_client
-sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 profile = sb.table("profiles").select(
     "skills, target_roles, experience_summary, education"
 ).eq("user_id", USER_ID).single().execute()

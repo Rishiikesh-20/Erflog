@@ -16,6 +16,10 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("Main")
 
+# 2. Validate environment variables
+from core.config import validate_env
+validate_env(strict=False)  # Warn if missing, but don't exit in dev
+
 from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,7 +44,7 @@ from agents.agent_6_leetcode import agent6_router
 # =============================================================================
 app = FastAPI(
     title="Career Flow AI API",
-    description="AI-powered career automation system with 5 specialized agents",
+    description="AI-powered career automation system with 6 specialized agents",
     version="2.0.0"
 )
 

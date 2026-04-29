@@ -38,3 +38,7 @@ langchain-openai
 MainContentExtractor
 Selenium-Screenshot
 webdriver-manager
+# === True Agentic Infrastructure ===
+tenacity>=8.2.0
+arq>=0.26.0
+langchain-core>=0.3.0

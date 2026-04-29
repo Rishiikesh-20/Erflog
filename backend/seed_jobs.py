@@ -2,12 +2,11 @@ import os
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from google import genai
+from core.config import PINECONE_API_KEY, PINECONE_INDEX_NAME, GEMINI_API_KEY
 
 load_dotenv()
 
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-INDEX_NAME = os.getenv("INDEX_NAME", "ai-verse")
+INDEX_NAME = PINECONE_INDEX_NAME
 
 if not PINECONE_API_KEY or not GEMINI_API_KEY:
   raise RuntimeError("PINECONE_API_KEY and GEMINI_API_KEY must be set in the environment or a .env file")
@@ -108,8 +107,9 @@ for job in jobs_data:
     text_to_embed = f"{job['title']} {job['description']} {job['company_name']}"
     
     response = client.models.embed_content(
-        model="text-embedding-004",  # 768 dimensions - ensure Pinecone index matches!
+        model="gemini-embedding-001",  # 768 dimensions (output_dimensionality) - ensure Pinecone index matches!
         contents=text_to_embed,
+        config={"output_dimensionality": 768},
     )
     
     vectors_to_upsert.append({

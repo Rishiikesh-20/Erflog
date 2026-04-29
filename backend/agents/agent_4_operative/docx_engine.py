@@ -40,90 +40,12 @@ class DocxSurgeon:
 
     def replace_section_content(self, docx_path: str, section_name: str, new_text: str) -> bool:
         """
-        Edits the DOCX file to replace section content.
-        Strategy: Find the header, then replace text until the next header.
+        [DEPRECATED] Edits the DOCX file to replace section content.
+        This feature is disabled due to python-docx parsing instabilities.
+        System will fallback to standard PDF/JSON generation.
         """
         print(f"📝 [DocxSurgeon] Editing section: {section_name}")
-        
-        try:
-            doc = Document(docx_path)
-            
-            # Normalize header for search
-            target_header = section_name.strip().upper()
-            
-            # Simple header detection heuristics
-            # Known headers: EXPERIENCE, PROJECTS, SKILLS, EDUCATION
-            
-            header_found = False
-            in_target_section = False
-            
-            # We need to iterate and modify. 
-            # Note: doc.paragraphs implies linear text. Tables might be issue but pdf2docx usually outputs flow text or tables.
-            # pdf2docx often puts layout in tables. We might need to search tables too.
-            
-            # PHASE 1: SEARCH PARAGRAPHS
-            paragraphs_to_remove = []
-            insert_point = None
-            
-            for i, para in enumerate(doc.paragraphs):
-                text = para.text.strip().upper()
-                
-                # Check if this is a header
-                is_header = text in ["EXPERIENCE", "PROJECTS", "SKILLS", "EDUCATION", "WORK EXPERIENCE", "TECHNICAL SKILLS"]
-                
-                if is_header:
-                    if text == target_header or target_header in text:
-                        print(f"   📍 Found Header: {text}")
-                        header_found = True
-                        in_target_section = True
-                        insert_point = i + 1 # Insert after header
-                        continue
-                    elif in_target_section:
-                        # Found NEXT header, stop
-                        print(f"   🛑 Found Next Header: {text}. Stopping section edit.")
-                        in_target_section = False
-                        break
-                
-                if in_target_section:
-                    # Mark paragraph for deletion (clear text)
-                    # We can't easily "delete" paragraphs in python-docx list, but we can clear content
-                    para.clear() 
-            
-            # PHASE 2: INSERT NEW CONTENT
-            if header_found and insert_point is not None:
-                # We cleared the old text. Now we need to insert the new text.
-                # However, python-docx doesn't support "insert paragraph at index" easily without internal API hacks.
-                # EASIER: Append text to the Header paragraph? No.
-                # EASIER: We just cleared the old paragraphs. We can set the text of the *first* cleared paragraph 
-                # to the new content, provided there was at least one.
-                
-                # Let's try to be safer: 
-                # 1. Clear all old paragraphs in section.
-                # 2. Add the new text to the FIRST content paragraph we found (or creating one).
-                
-                # Re-iterate to fill
-                in_target_section = False
-                filled = False
-                
-                for para in doc.paragraphs:
-                    text = para.text.strip().upper() # This might be empty now if cleared? No, para.text is accessed.
-                    
-                    # We need to track index manually or re-check headers? 
-                    # If we cleared text, checks will fail.
-                    # BETTER STRATEGY: Do it in one pass or keep indices.
-                    pass
-                
-                # Let's retry strategy:
-                # 1. Scan to find Header Index and Next Header Index.
-                # 2. Delete paragraphs between them.
-                # 3. Insert new paragraph at Header Index + 1.
-                pass 
-                
-            raise NotImplementedError("Complex logic needed for DOCX structure. Using simplified append for now.")
-
-        except Exception as e:
-            print(f"   ⚠️ Edit failed (Fallback to simple replace?): {e}")
-            return False
+        raise NotImplementedError("DOCX editing is disabled in production. Fallback to PDF/JSON.")
 
     def _detect_section_style(self, doc, start_idx, end_idx):
         """
